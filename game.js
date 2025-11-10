@@ -5,13 +5,18 @@ class CloudFarmGame {
         this.canvas = document.getElementById('game-canvas');
         this.ctx = this.canvas.getContext('2d');
 
-        // Game state with full RPG system
+        // Game state with full RPG system and FarmVille mechanics
         this.gameState = {
             day: 1,
             credits: 100,
             level: 1,
             xp: 0,
             xpToNextLevel: 100,
+
+            // FarmVille Energy System
+            energy: 100,
+            maxEnergy: 100,
+            lastEnergyUpdate: Date.now(),
 
             // RPG Stats
             stats: JSON.parse(JSON.stringify(rpgData.characterStats)),
@@ -28,9 +33,12 @@ class CloudFarmGame {
             completedQuests: [],
             questProgress: {},
 
+            // FarmVille Farm Plots (grid-based)
+            farmPlots: this.initializeFarmGrid(),
+
             // Inventory
             inventory: [],
-            plantedServices: [],
+            plantedServices: [], // Legacy support
             unlockedAchievements: [],
             dailyTaskProgress: {},
             quizStreak: 0,
@@ -96,6 +104,46 @@ class CloudFarmGame {
         // Environmental effects
         this.floatingClouds = this.generateClouds();
         this.stars = this.generateStars();
+
+        // FarmVille: Selected plot and planting mode
+        this.selectedPlot = null;
+        this.plantingMode = false;
+        this.selectedService = null;
+
+        // FarmVille: Farm grid configuration
+        this.farmGridConfig = {
+            rows: 6,
+            cols: 8,
+            plotSize: 80,
+            offsetX: 100,
+            offsetY: 150
+        };
+    }
+
+    // FarmVille: Initialize farm grid
+    initializeFarmGrid() {
+        const grid = [];
+        const rows = 6;
+        const cols = 8;
+
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+                grid.push({
+                    id: `plot-${row}-${col}`,
+                    row: row,
+                    col: col,
+                    unlocked: row < 3 && col < 4, // Start with 12 unlocked plots
+                    state: 'empty', // empty, planted, growing, ready, harvested
+                    serviceId: null,
+                    plantedDay: null,
+                    plantedTime: null,
+                    growthProgress: 0,
+                    growthRequired: 0 // Days or time to grow
+                });
+            }
+        }
+
+        return grid;
     }
 
     setupUI() {
@@ -143,10 +191,31 @@ class CloudFarmGame {
             if (e.key.toLowerCase() === 'q') {
                 this.openQuestLog();
             }
+
+            // FarmVille: Next day (for testing)
+            if (e.key.toLowerCase() === 'n') {
+                this.advanceDay();
+            }
         });
 
         window.addEventListener('keyup', (e) => {
             this.keys[e.key.toLowerCase()] = false;
+        });
+
+        // FarmVille: Mouse click handling for plots
+        this.canvas.addEventListener('click', (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            this.handlePlotClick(x, y);
+        });
+
+        // FarmVille: Mouse move for hover effects
+        this.canvas.addEventListener('mousemove', (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            this.handlePlotHover(x, y);
         });
     }
 
@@ -157,6 +226,11 @@ class CloudFarmGame {
             level: 1,
             xp: 0,
             xpToNextLevel: 100,
+
+            // FarmVille Energy System
+            energy: 100,
+            maxEnergy: 100,
+            lastEnergyUpdate: Date.now(),
 
             // RPG Stats
             stats: JSON.parse(JSON.stringify(rpgData.characterStats)),
@@ -175,6 +249,9 @@ class CloudFarmGame {
                 'first-steps': { 'quiz': 0 }
             },
 
+            // FarmVille Farm Plots
+            farmPlots: this.initializeFarmGrid(),
+
             inventory: [],
             plantedServices: [],
             unlockedAchievements: [],
@@ -185,6 +262,10 @@ class CloudFarmGame {
             perfectScores: 0,
             title: 'Novice'
         };
+
+        this.selectedPlot = null;
+        this.plantingMode = false;
+        this.selectedService = null;
 
         this.showGame();
         this.saveGame();
@@ -309,6 +390,9 @@ Created with ☁️ for AWS learners everywhere.`);
 
         // Update clouds
         this.updateClouds(deltaTime);
+
+        // FarmVille: Update energy regeneration
+        this.updateEnergy();
     }
 
     generateClouds() {
@@ -402,128 +486,197 @@ Created with ☁️ for AWS learners everywhere.`);
     }
 
     render() {
-        // Isometric tile dimensions
-        const baseSize = Math.min(
-            this.canvas.width / (gameData.mapLayout.width + gameData.mapLayout.height),
-            this.canvas.height / (gameData.mapLayout.width + gameData.mapLayout.height)
-        );
-
-        const tileWidth = baseSize * 2;
-        const tileHeight = baseSize;
-
-        // Offset to center the map with camera
-        const offsetX = this.canvas.width / 2 - (this.camera.x - this.camera.y) * (tileWidth / 2);
-        const offsetY = this.canvas.height / 4 - (this.camera.x + this.camera.y) * (tileHeight / 2) + this.canvas.height * 0.2;
+        // FarmVille-style rendering
 
         // Clear canvas with animated gradient background
         const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
         const skyShift = Math.sin(this.time * 0.5) * 0.1;
-        gradient.addColorStop(0, this.lerpColor('#0a1929', '#1a2535', skyShift));
-        gradient.addColorStop(0.5, this.lerpColor('#132f4c', '#1e3a5c', skyShift));
-        gradient.addColorStop(1, this.lerpColor('#1a1a2e', '#2a2a3e', skyShift));
+        gradient.addColorStop(0, this.lerpColor('#87CEEB', '#98d8f4', skyShift));
+        gradient.addColorStop(0.5, this.lerpColor('#6FB1D0', '#7fc1e0', skyShift));
+        gradient.addColorStop(1, this.lerpColor('#5A9FB5', '#6aafc5', skyShift));
         this.ctx.fillStyle = gradient;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Draw twinkling stars
-        this.drawStars(offsetX, offsetY, tileWidth, tileHeight);
-
-        // Draw floating clouds
-        this.drawClouds(offsetX, offsetY, tileWidth, tileHeight);
-
-        // Convert 2D coords to isometric with camera offset
-        const toIso = (x, y) => {
-            return {
-                x: offsetX + (x - y) * (tileWidth / 2),
-                y: offsetY + (x + y) * (tileHeight / 2)
-            };
-        };
-
-        // Draw all elements in correct depth order (back to front)
-        const renderItems = [];
-
-        // Add zone tiles
-        for (const zone of gameData.mapLayout.layers.zones) {
-            for (let tx = zone.x; tx < zone.x + zone.width; tx++) {
-                for (let ty = zone.y; ty < zone.y + zone.height; ty++) {
-                    renderItems.push({
-                        type: 'tile',
-                        x: tx,
-                        y: ty,
-                        zone: zone,
-                        depth: tx + ty
-                    });
-                }
-            }
-        }
-
-        // Add planted services
-        for (const planted of this.gameState.plantedServices) {
-            renderItems.push({
-                type: 'service',
-                x: planted.x,
-                y: planted.y,
-                data: planted,
-                depth: planted.x + planted.y + 0.5
-            });
-        }
-
-        // Add NPCs
-        const unlockedNPCs = getUnlockedNPCs(this.gameState.level);
-        for (const npc of unlockedNPCs) {
-            renderItems.push({
-                type: 'npc',
-                x: npc.position.x,
-                y: npc.position.y,
-                data: npc,
-                depth: npc.position.x + npc.position.y + 0.5
-            });
-        }
-
-        // Add player
-        renderItems.push({
-            type: 'player',
-            x: this.player.x,
-            y: this.player.y,
-            depth: this.player.x + this.player.y + 0.6
-        });
-
-        // Sort by depth (painter's algorithm)
-        renderItems.sort((a, b) => a.depth - b.depth);
-
-        // Render all items
-        for (const item of renderItems) {
-            const iso = toIso(item.x, item.y);
-
-            if (item.type === 'tile') {
-                this.drawIsometricTile(iso.x, iso.y, tileWidth, tileHeight, item.zone.color);
-            } else if (item.type === 'service') {
-                const service = getServiceById(item.data.serviceId);
-                if (service) {
-                    this.drawIsometricSprite(iso.x, iso.y, service.emoji, tileWidth, '#4CAF50');
-                }
-            } else if (item.type === 'npc') {
-                this.drawIsometricSprite(iso.x, iso.y, item.data.emoji, tileWidth, '#667eea');
-
-                // NPC name on hover
-                if (this.nearbyNPC && this.nearbyNPC.id === item.data.id) {
-                    this.drawNameTag(iso.x, iso.y - tileHeight, item.data.name);
-                }
-            } else if (item.type === 'player') {
-                this.drawIsometricSprite(iso.x, iso.y, this.player.emoji, tileWidth, '#FFD700', true);
-            }
-        }
-
-        // Draw zone labels
-        for (const zone of gameData.mapLayout.layers.zones) {
-            const centerIso = toIso(
-                zone.x + zone.width / 2,
-                zone.y + zone.height / 2
-            );
-            this.drawZoneLabel(centerIso.x, centerIso.y - tileHeight * 2, zone.name, zone.color);
-        }
+        // Draw farm plots
+        this.drawFarmPlots();
 
         // Draw particles
-        this.drawParticles(toIso, tileWidth);
+        this.drawFarmParticles();
+
+        // Draw day counter and help text
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.font = 'bold 20px Arial';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText(`Day ${this.gameState.day}`, 20, 40);
+
+        this.ctx.font = '14px Arial';
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        this.ctx.fillText('Click empty plots to plant • Click ready crops to harvest • Press N to advance day', 20, this.canvas.height - 20);
+    }
+
+    drawFarmPlots() {
+        const cfg = this.farmGridConfig;
+
+        for (const plot of this.gameState.farmPlots) {
+            const x = cfg.offsetX + plot.col * cfg.plotSize;
+            const y = cfg.offsetY + plot.row * cfg.plotSize;
+
+            this.ctx.save();
+
+            // Determine plot appearance
+            if (!plot.unlocked) {
+                // Locked plot
+                this.ctx.fillStyle = '#444444';
+                this.ctx.fillRect(x + 2, y + 2, cfg.plotSize - 4, cfg.plotSize - 4);
+
+                this.ctx.strokeStyle = '#555555';
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(x + 2, y + 2, cfg.plotSize - 4, cfg.plotSize - 4);
+
+                this.ctx.fillStyle = '#888888';
+                this.ctx.font = '32px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText('🔒', x + cfg.plotSize / 2, y + cfg.plotSize / 2);
+            } else {
+                // Unlocked plot
+                const isHovered = this.selectedPlot === plot;
+
+                // Background
+                let bgColor = '#8B7355'; // Dirt color
+
+                if (plot.state === 'ready') {
+                    bgColor = '#90EE90'; // Light green for ready
+                } else if (plot.state === 'growing' || plot.state === 'planted') {
+                    bgColor = '#A0826D'; // Growing dirt
+                }
+
+                if (isHovered) {
+                    this.ctx.shadowColor = '#FFD700';
+                    this.ctx.shadowBlur = 15;
+                }
+
+                this.ctx.fillStyle = bgColor;
+                this.ctx.fillRect(x + 2, y + 2, cfg.plotSize - 4, cfg.plotSize - 4);
+
+                this.ctx.shadowBlur = 0;
+
+                // Border
+                this.ctx.strokeStyle = isHovered ? '#FFD700' : '#6B5345';
+                this.ctx.lineWidth = isHovered ? 3 : 2;
+                this.ctx.strokeRect(x + 2, y + 2, cfg.plotSize - 4, cfg.plotSize - 4);
+
+                // Content based on state
+                if (plot.state === 'empty') {
+                    // Show plus sign for empty plots
+                    if (isHovered) {
+                        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                        this.ctx.font = '40px Arial';
+                        this.ctx.textAlign = 'center';
+                        this.ctx.textBaseline = 'middle';
+                        this.ctx.fillText('+', x + cfg.plotSize / 2, y + cfg.plotSize / 2);
+                    }
+                } else if (plot.state === 'planted') {
+                    // Seedling stage
+                    this.ctx.font = '32px Arial';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText('🌱', x + cfg.plotSize / 2, y + cfg.plotSize / 2);
+
+                    // Days left
+                    const daysLeft = plot.growthRequired - plot.growthProgress;
+                    this.ctx.fillStyle = '#000';
+                    this.ctx.font = 'bold 12px Arial';
+                    this.ctx.fillText(`${daysLeft}d`, x + cfg.plotSize / 2, y + cfg.plotSize - 15);
+                } else if (plot.state === 'growing') {
+                    // Growing stage
+                    const service = getServiceById(plot.serviceId);
+                    const growthPercent = plot.growthProgress / plot.growthRequired;
+
+                    // Show growing emoji with progress
+                    this.ctx.font = `${24 + growthPercent * 16}px Arial`;
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText(service?.emoji || '🌿', x + cfg.plotSize / 2, y + cfg.plotSize / 2);
+
+                    // Progress bar
+                    const barWidth = cfg.plotSize - 20;
+                    const barHeight = 8;
+                    const barX = x + 10;
+                    const barY = y + cfg.plotSize - 15;
+
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    this.ctx.fillRect(barX, barY, barWidth, barHeight);
+
+                    this.ctx.fillStyle = '#4CAF50';
+                    this.ctx.fillRect(barX, barY, barWidth * growthPercent, barHeight);
+
+                    this.ctx.strokeStyle = '#000';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+                    // Days left
+                    const daysLeft = plot.growthRequired - plot.growthProgress;
+                    this.ctx.fillStyle = '#fff';
+                    this.ctx.font = 'bold 10px Arial';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText(`${daysLeft}d`, x + cfg.plotSize / 2, barY - 5);
+                } else if (plot.state === 'ready') {
+                    // Ready to harvest - show full size and sparkle
+                    const service = getServiceById(plot.serviceId);
+
+                    // Pulsing effect
+                    const pulse = Math.sin(this.time * 3) * 0.1 + 1;
+                    this.ctx.font = `${Math.floor(40 * pulse)}px Arial`;
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+
+                    // Glow effect
+                    this.ctx.shadowColor = '#FFD700';
+                    this.ctx.shadowBlur = 20;
+
+                    this.ctx.fillText(service?.emoji || '✨', x + cfg.plotSize / 2, y + cfg.plotSize / 2);
+
+                    this.ctx.shadowBlur = 0;
+
+                    // Ready text
+                    this.ctx.fillStyle = '#FFD700';
+                    this.ctx.font = 'bold 14px Arial';
+                    this.ctx.fillText('READY!', x + cfg.plotSize / 2, y + cfg.plotSize - 10);
+                }
+            }
+
+            this.ctx.restore();
+        }
+    }
+
+    drawFarmParticles() {
+        for (const p of this.particles) {
+            const cfg = this.farmGridConfig;
+            const x = cfg.offsetX + p.x * cfg.plotSize;
+            const y = cfg.offsetY + p.y * cfg.plotSize;
+
+            const alpha = p.life / p.maxLife;
+
+            this.ctx.save();
+            this.ctx.globalAlpha = alpha;
+
+            if (p.type === 'dust') {
+                this.ctx.fillStyle = '#8B7355';
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, p.size, 0, Math.PI * 2);
+                this.ctx.fill();
+            } else if (p.type === 'sparkle') {
+                this.ctx.fillStyle = '#FFD700';
+                this.ctx.shadowColor = '#FFD700';
+                this.ctx.shadowBlur = 10;
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, p.size, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            this.ctx.restore();
+        }
     }
 
     drawStars(offsetX, offsetY, tileWidth, tileHeight) {
@@ -1074,6 +1227,18 @@ ${passed ? `Rewards:
     }
 
     buyService(service) {
+        // FarmVille mode: Plant on selected plot
+        if (this.plantingMode && this.selectedPlot) {
+            const success = this.plantService(this.selectedPlot, service);
+            if (success) {
+                this.closeShop();
+                this.plantingMode = false;
+                this.selectedPlot = null;
+            }
+            return;
+        }
+
+        // Legacy mode: Old planting system
         if (this.gameState.credits < service.cost) {
             alert('Not enough cloud credits!');
             return;
@@ -1106,6 +1271,8 @@ ${passed ? `Rewards:
 
     closeShop() {
         document.getElementById('shop-modal').classList.add('hidden');
+        this.plantingMode = false;
+        this.selectedPlot = null;
     }
 
     addXP(amount) {
@@ -1238,15 +1405,22 @@ ${passed ? `Rewards:
         document.getElementById('credits').textContent = this.gameState.credits;
         document.getElementById('level').textContent = this.gameState.level;
 
-        // Update HP/MP bars
+        // Update HP bar (keep for RPG features)
         const stats = this.gameState.stats;
         const hpPercent = (stats.currentHealth / stats.maxHealth) * 100;
-        const mpPercent = (stats.currentMana / stats.maxMana) * 100;
-
         document.getElementById('hp-bar').style.width = hpPercent + '%';
         document.getElementById('hp-display').textContent = `${Math.floor(stats.currentHealth)}/${stats.maxHealth}`;
-        document.getElementById('mp-bar').style.width = mpPercent + '%';
-        document.getElementById('mp-display').textContent = `${Math.floor(stats.currentMana)}/${stats.maxMana}`;
+
+        // Update Energy bar (FarmVille - replaces MP bar)
+        const energyPercent = (this.gameState.energy / this.gameState.maxEnergy) * 100;
+        document.getElementById('mp-bar').style.width = energyPercent + '%';
+        document.getElementById('mp-display').textContent = `${Math.floor(this.gameState.energy)}/${this.gameState.maxEnergy}`;
+
+        // Change MP label to Energy label
+        const mpLabel = document.querySelector('.hud-vitals .vital-label:nth-child(4)');
+        if (mpLabel && mpLabel.textContent.includes('MP')) {
+            mpLabel.textContent = '⚡ Energy';
+        }
 
         // Update XP bar
         const xpPercentage = (this.gameState.xp / this.gameState.xpToNextLevel) * 100;
@@ -1303,7 +1477,8 @@ ${passed ? `Rewards:
             const saved = localStorage.getItem('cloudFarmSave');
             if (saved) {
                 const loadedState = JSON.parse(saved);
-                // Migrate old saves
+
+                // Migrate old saves for RPG system
                 if (!loadedState.stats) {
                     loadedState.stats = JSON.parse(JSON.stringify(rpgData.characterStats));
                     loadedState.equipment = { weapon: null, armor: null, accessory: null };
@@ -1315,6 +1490,17 @@ ${passed ? `Rewards:
                     loadedState.perfectScores = 0;
                     loadedState.title = 'Novice';
                 }
+
+                // Migrate old saves for FarmVille system
+                if (!loadedState.farmPlots) {
+                    loadedState.farmPlots = this.initializeFarmGrid();
+                }
+                if (!loadedState.energy && loadedState.energy !== 0) {
+                    loadedState.energy = 100;
+                    loadedState.maxEnergy = 100;
+                    loadedState.lastEnergyUpdate = Date.now();
+                }
+
                 this.gameState = loadedState;
                 return true;
             }
@@ -1633,6 +1819,202 @@ ${passed ? `Rewards:
             this.applyEquipmentStats(); // Recalculate derived stats
             this.showNotification(`📊 +${amount} ${stat.charAt(0).toUpperCase() + stat.slice(1)}!`);
         }
+    }
+
+    // ==================== FarmVille Mechanics ====================
+
+    handlePlotClick(x, y) {
+        const plot = this.getPlotAtPosition(x, y);
+        if (!plot) return;
+
+        if (!plot.unlocked) {
+            this.showNotification('🔒 Unlock this plot by leveling up!');
+            return;
+        }
+
+        if (plot.state === 'empty') {
+            // Open shop to select service to plant
+            this.openShopForPlanting(plot);
+        } else if (plot.state === 'ready') {
+            // Harvest the plot
+            this.harvestPlot(plot);
+        } else if (plot.state === 'growing' || plot.state === 'planted') {
+            // Show growth info
+            const service = getServiceById(plot.serviceId);
+            const daysLeft = plot.growthRequired - plot.growthProgress;
+            this.showNotification(`🌱 ${service?.name || 'Service'} growing... ${daysLeft} days left`);
+        }
+    }
+
+    handlePlotHover(x, y) {
+        const plot = this.getPlotAtPosition(x, y);
+        this.selectedPlot = plot;
+        this.canvas.style.cursor = plot && plot.unlocked ? 'pointer' : 'default';
+    }
+
+    getPlotAtPosition(x, y) {
+        const cfg = this.farmGridConfig;
+
+        for (const plot of this.gameState.farmPlots) {
+            const plotX = cfg.offsetX + plot.col * cfg.plotSize;
+            const plotY = cfg.offsetY + plot.row * cfg.plotSize;
+
+            if (x >= plotX && x < plotX + cfg.plotSize &&
+                y >= plotY && y < plotY + cfg.plotSize) {
+                return plot;
+            }
+        }
+
+        return null;
+    }
+
+    openShopForPlanting(plot) {
+        this.plantingMode = true;
+        this.selectedPlot = plot;
+        this.openShop();
+    }
+
+    plantService(plot, service) {
+        // Check energy
+        if (this.gameState.energy < 10) {
+            this.showNotification('⚡ Not enough energy! Wait for energy to regenerate.');
+            return false;
+        }
+
+        // Check cost
+        if (this.gameState.credits < service.cost) {
+            this.showNotification('❌ Not enough credits!');
+            return false;
+        }
+
+        // Deduct cost and energy
+        this.gameState.credits -= service.cost;
+        this.gameState.energy -= 10;
+
+        // Plant the service
+        plot.state = 'planted';
+        plot.serviceId = service.id;
+        plot.plantedDay = this.gameState.day;
+        plot.plantedTime = Date.now();
+        plot.growthProgress = 0;
+        plot.growthRequired = service.growthDays || 2; // Default 2 days
+
+        // Create planting particles
+        this.createParticle(plot.col + 0.5, plot.row + 0.5, 'sparkle');
+
+        this.showNotification(`✅ Planted ${service.name}!`);
+        this.updateDailyTask('farming', 1);
+        this.updateUI();
+        this.saveGame();
+
+        return true;
+    }
+
+    harvestPlot(plot) {
+        if (plot.state !== 'ready') return;
+
+        // Check energy
+        if (this.gameState.energy < 5) {
+            this.showNotification('⚡ Not enough energy to harvest!');
+            return;
+        }
+
+        const service = getServiceById(plot.serviceId);
+        if (!service) return;
+
+        // Deduct energy
+        this.gameState.energy -= 5;
+
+        // Calculate rewards (increased for harvesting)
+        const harvestReward = service.cost * 2; // Double the planting cost
+        const xpReward = service.xpReward * 2;
+
+        this.gameState.credits += harvestReward;
+        this.addXP(xpReward);
+
+        // Create harvest particles
+        for (let i = 0; i < 10; i++) {
+            this.createParticle(plot.col + 0.5 + (Math.random() - 0.5),
+                              plot.row + 0.5 + (Math.random() - 0.5), 'sparkle');
+        }
+
+        // Show harvest notification
+        this.showNotification(`✨ Harvested ${service.name}! +${harvestReward} credits, +${xpReward} XP`);
+
+        // Reset plot to empty
+        plot.state = 'empty';
+        plot.serviceId = null;
+        plot.plantedDay = null;
+        plot.plantedTime = null;
+        plot.growthProgress = 0;
+        plot.growthRequired = 0;
+
+        // Update quest progress
+        this.gameState.activeQuests.forEach(questId => {
+            this.updateQuestProgress(questId, 'harvest', 1);
+        });
+
+        this.updateUI();
+        this.saveGame();
+    }
+
+    updateGrowth() {
+        let anyGrowth = false;
+
+        for (const plot of this.gameState.farmPlots) {
+            if (plot.state === 'planted' || plot.state === 'growing') {
+                plot.growthProgress++;
+
+                if (plot.growthProgress >= plot.growthRequired) {
+                    plot.state = 'ready';
+                    const service = getServiceById(plot.serviceId);
+                    this.showNotification(`🎉 ${service?.name || 'Service'} is ready to harvest!`);
+                    anyGrowth = true;
+                } else {
+                    plot.state = 'growing';
+                }
+            }
+        }
+
+        if (anyGrowth) {
+            this.saveGame();
+        }
+    }
+
+    updateEnergy() {
+        const now = Date.now();
+        const timeSince = now - this.gameState.lastEnergyUpdate;
+        const minutesElapsed = timeSince / (1000 * 60);
+
+        // Regenerate 1 energy per minute
+        const energyToAdd = Math.floor(minutesElapsed);
+
+        if (energyToAdd > 0) {
+            this.gameState.energy = Math.min(
+                this.gameState.maxEnergy,
+                this.gameState.energy + energyToAdd
+            );
+            this.gameState.lastEnergyUpdate = now;
+            this.updateUI();
+        }
+    }
+
+    advanceDay() {
+        this.gameState.day++;
+        this.updateGrowth();
+
+        // Restore some energy
+        this.gameState.energy = Math.min(
+            this.gameState.maxEnergy,
+            this.gameState.energy + 50
+        );
+
+        // Reset daily tasks
+        this.gameState.dailyTaskProgress = { quiz: 0, social: 0, farming: 0 };
+
+        this.showNotification(`🌅 Day ${this.gameState.day} begins! Energy restored.`);
+        this.updateUI();
+        this.saveGame();
     }
 }
 

@@ -131,6 +131,7 @@ const gameData = {
             cost: 10,
             xpReward: 20,
             category: 'compute',
+            growthDays: 2,
             unlocked: true
         },
         {
@@ -141,6 +142,7 @@ const gameData = {
             cost: 15,
             xpReward: 25,
             category: 'storage',
+            growthDays: 2,
             unlocked: true
         },
         {
@@ -151,6 +153,7 @@ const gameData = {
             cost: 20,
             xpReward: 30,
             category: 'compute',
+            growthDays: 3,
             unlocked: false,
             unlockLevel: 2
         },
@@ -162,6 +165,7 @@ const gameData = {
             cost: 25,
             xpReward: 35,
             category: 'database',
+            growthDays: 3,
             unlocked: false,
             unlockLevel: 3
         },
@@ -173,6 +177,7 @@ const gameData = {
             cost: 30,
             xpReward: 40,
             category: 'database',
+            growthDays: 4,
             unlocked: false,
             unlockLevel: 3
         },
@@ -184,6 +189,7 @@ const gameData = {
             cost: 35,
             xpReward: 45,
             category: 'networking',
+            growthDays: 4,
             unlocked: false,
             unlockLevel: 4
         },
@@ -195,6 +201,7 @@ const gameData = {
             cost: 40,
             xpReward: 50,
             category: 'networking',
+            growthDays: 5,
             unlocked: false,
             unlockLevel: 5
         }
