@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Cloud Farm - CCP Exam Training Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="title-screen" class="screen active">
+            <div class="title-content">
+                <h1>☁️ AWS Cloud Farm ☁️</h1>
+                <p class="subtitle">Master the AWS Certified Cloud Practitioner Exam</p>
+                <div class="menu-options">
+                    <button class="menu-btn" id="start-game">Start New Farm</button>
+                    <button class="menu-btn" id="continue-game">Continue</button>
+                    <button class="menu-btn" id="about-game">About</button>
+                </div>
+                <p class="version">v1.0 - A Stardew Valley Style Learning Adventure</p>
+            </div>
+        </div>
+
+        <div id="game-screen" class="screen">
+            <div id="hud">
+                <div class="hud-section">
+                    <span class="hud-label">Day:</span>
+                    <span id="day-counter">1</span>
+                </div>
+                <div class="hud-section">
+                    <span class="hud-label">☁️ Cloud Credits:</span>
+                    <span id="credits">100</span>
+                </div>
+                <div class="hud-section">
+                    <span class="hud-label">⭐ Level:</span>
+                    <span id="level">1</span>
+                </div>
+                <div class="hud-section">
+                    <span class="hud-label">📚 Knowledge:</span>
+                    <div class="progress-bar">
+                        <div id="xp-bar" class="progress-fill"></div>
+                    </div>
+                    <span id="xp-text">0/100</span>
+                </div>
+            </div>
+
+            <div id="game-area">
+                <canvas id="game-canvas"></canvas>
+                <div id="interaction-prompt" class="hidden">Press SPACE to interact</div>
+            </div>
+
+            <div id="sidebar">
+                <h3>🎒 Inventory</h3>
+                <div id="inventory"></div>
+
+                <h3>📋 Daily Tasks</h3>
+                <div id="tasks">
+                    <div class="task">Complete 3 quizzes ✓</div>
+                </div>
+
+                <h3>🏆 Progress</h3>
+                <div id="achievements">
+                    <div class="achievement locked">EC2 Novice</div>
+                    <div class="achievement locked">S3 Master</div>
+                    <div class="achievement locked">Cloud Architect</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="quiz-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="quiz-title">☁️ AWS Quiz</h2>
+                    <button class="close-btn" id="close-quiz">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p id="question-text"></p>
+                    <div id="answers"></div>
+                </div>
+                <div class="modal-footer">
+                    <div id="quiz-feedback" class="hidden"></div>
+                    <button id="submit-answer" class="btn-primary">Submit Answer</button>
+                    <button id="next-question" class="btn-primary hidden">Next Question</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="dialog-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="npc-dialog">
+                    <div class="npc-portrait" id="npc-portrait"></div>
+                    <div class="dialog-content">
+                        <h3 id="npc-name"></h3>
+                        <p id="dialog-text"></p>
+                        <button class="btn-primary" id="close-dialog">Continue</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="shop-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>☁️ AWS Service Shop</h2>
+                    <button class="close-btn" id="close-shop">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="shop-items"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="game-data.js"></script>
+    <script src="quiz-data.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
