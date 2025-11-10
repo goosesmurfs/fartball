@@ -795,3 +795,495 @@ body::before {
         opacity: 1;
     }
 }
+
+/* RPG System Styles */
+
+/* Enhanced HUD Layout */
+#hud {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.8rem 1.5rem;
+    height: auto;
+    min-height: 80px;
+}
+
+.hud-left, .hud-center, .hud-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.hud-vitals {
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.vital-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.vital-label {
+    font-weight: 700;
+    min-width: 60px;
+}
+
+.hp-bar {
+    width: 200px;
+    height: 20px;
+}
+
+.mp-bar {
+    width: 200px;
+    height: 20px;
+}
+
+.hp-fill {
+    background: linear-gradient(90deg, #e74c3c, #c0392b);
+}
+
+.mp-fill {
+    background: linear-gradient(90deg, #3498db, #2980b9);
+}
+
+.hud-btn {
+    padding: 0.8rem 1.2rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.hud-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+/* Character Sheet */
+.rpg-sheet {
+    max-width: 900px;
+}
+
+.character-info {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+    border-radius: 15px;
+}
+
+.char-portrait {
+    font-size: 5rem;
+    width: 120px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 50%;
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+}
+
+.char-details {
+    flex: 1;
+}
+
+.char-details h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 2rem;
+    color: #2c3e50;
+}
+
+.char-title {
+    color: #667eea;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.stat-bar-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-bar {
+    flex: 1;
+    height: 25px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.stat-bar-fill {
+    height: 100%;
+    transition: width 0.5s;
+}
+
+.health-bar .stat-bar-fill {
+    background: linear-gradient(90deg, #e74c3c, #c0392b);
+}
+
+.mana-bar .stat-bar-fill {
+    background: linear-gradient(90deg, #3498db, #2980b9);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1rem;
+    margin: 2rem 0;
+}
+
+.stat-box {
+    text-align: center;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 15px;
+    border: 2px solid rgba(102, 126, 234, 0.3);
+    transition: all 0.3s;
+}
+
+.stat-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+    border-color: #667eea;
+}
+
+.stat-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-name {
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.combat-stats {
+    display: flex;
+    justify-content: space-around;
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 12px;
+    margin: 2rem 0;
+}
+
+.combat-stat {
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.combat-stat span {
+    color: #667eea;
+    font-weight: 700;
+}
+
+.equipment-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.equip-slot {
+    background: rgba(0, 0, 0, 0.05);
+    border: 3px dashed rgba(102, 126, 234, 0.3);
+    border-radius: 15px;
+    padding: 1.5rem;
+    text-align: center;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+.equip-slot:hover {
+    border-style: solid;
+    border-color: #667eea;
+    background: rgba(102, 126, 234, 0.1);
+    transform: scale(1.05);
+}
+
+.slot-label {
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.slot-content {
+    font-size: 3rem;
+    margin: 1rem 0;
+}
+
+.skill-points {
+    text-align: center;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 165, 0, 0.2));
+    border-radius: 15px;
+    margin-top: 2rem;
+}
+
+.skill-points h3 {
+    margin: 0;
+    color: #2c3e50;
+}
+
+.skill-points span {
+    color: #ff9800;
+    font-size: 1.5em;
+}
+
+/* Quest Log */
+#quest-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.quest-item {
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%);
+    border-radius: 15px;
+    border-left: 5px solid #667eea;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s;
+}
+
+.quest-item:hover {
+    transform: translateX(10px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+}
+
+.quest-item.legendary {
+    border-left-color: #ff9800;
+    background: linear-gradient(135deg, #fff5e6 0%, #ffe0b2 100%);
+}
+
+.quest-item.main {
+    border-left-color: #667eea;
+}
+
+.quest-item.side {
+    border-left-color: #4caf50;
+}
+
+.quest-item.completed {
+    opacity: 0.6;
+    border-left-color: #9e9e9e;
+}
+
+.quest-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.quest-name {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.quest-type {
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.quest-type.main {
+    background: #667eea;
+    color: white;
+}
+
+.quest-type.side {
+    background: #4caf50;
+    color: white;
+}
+
+.quest-type.legendary {
+    background: linear-gradient(135deg, #ff9800, #ff5722);
+    color: white;
+}
+
+.quest-description {
+    color: #666;
+    margin-bottom: 1rem;
+    line-height: 1.6;
+}
+
+.quest-objectives {
+    margin: 1rem 0;
+}
+
+.objective {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+}
+
+.objective.complete {
+    background: rgba(76, 175, 80, 0.2);
+}
+
+.objective-icon {
+    font-size: 1.2rem;
+}
+
+.objective-progress {
+    margin-left: auto;
+    font-weight: 600;
+    color: #667eea;
+}
+
+.quest-rewards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: rgba(255, 215, 0, 0.1);
+    border-radius: 10px;
+    margin-top: 1rem;
+}
+
+.reward-item {
+    padding: 0.4rem 0.8rem;
+    background: white;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Loot/Reward Notifications */
+.loot-notification {
+    position: fixed;
+    right: 20px;
+    bottom: 120px;
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.95), rgba(255, 165, 0, 0.95));
+    color: white;
+    padding: 1.5rem;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(255, 165, 0, 0.5);
+    animation: lootSlide 0.5s ease-out;
+    z-index: 3000;
+    min-width: 250px;
+}
+
+@keyframes lootSlide {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.loot-title {
+    font-weight: 700;
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+}
+
+.loot-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    margin: 0.3rem 0;
+}
+
+.rarity-common { border-left: 4px solid #9e9e9e; }
+.rarity-uncommon { border-left: 4px solid #4caf50; }
+.rarity-rare { border-left: 4px solid #2196f3; }
+.rarity-epic { border-left: 4px solid #9c27b0; }
+.rarity-legendary { border-left: 4px solid #ff9800; }
+
+/* Level Up Notification */
+.level-up-notification {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 3rem;
+    border-radius: 25px;
+    box-shadow: 0 20px 80px rgba(102, 126, 234, 0.8);
+    z-index: 4000;
+    text-align: center;
+    animation: levelUpPop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes levelUpPop {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1.2);
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+}
+
+.level-up-notification h2 {
+    font-size: 3rem;
+    margin: 0 0 1rem 0;
+    text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.level-up-notification .level-number {
+    font-size: 5rem;
+    font-weight: 900;
+    display: block;
+    margin: 1rem 0;
+}
+
+/* Responsive RPG UI */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .equipment-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .hud-left, .hud-center {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .vital-bar {
+        flex-direction: column;
+    }
+}

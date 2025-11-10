@@ -23,24 +23,47 @@
 
         <div id="game-screen" class="screen">
             <div id="hud">
-                <div class="hud-section">
-                    <span class="hud-label">Day:</span>
-                    <span id="day-counter">1</span>
-                </div>
-                <div class="hud-section">
-                    <span class="hud-label">☁️ Cloud Credits:</span>
-                    <span id="credits">100</span>
-                </div>
-                <div class="hud-section">
-                    <span class="hud-label">⭐ Level:</span>
-                    <span id="level">1</span>
-                </div>
-                <div class="hud-section">
-                    <span class="hud-label">📚 Knowledge:</span>
-                    <div class="progress-bar">
-                        <div id="xp-bar" class="progress-fill"></div>
+                <div class="hud-left">
+                    <div class="hud-section hud-vitals">
+                        <div class="vital-bar">
+                            <span class="vital-label">❤️ HP</span>
+                            <div class="progress-bar hp-bar">
+                                <div id="hp-bar" class="progress-fill hp-fill"></div>
+                            </div>
+                            <span id="hp-display">100/100</span>
+                        </div>
+                        <div class="vital-bar">
+                            <span class="vital-label">💙 MP</span>
+                            <div class="progress-bar mp-bar">
+                                <div id="mp-bar" class="progress-fill mp-fill"></div>
+                            </div>
+                            <span id="mp-display">50/50</span>
+                        </div>
                     </div>
-                    <span id="xp-text">0/100</span>
+                </div>
+
+                <div class="hud-center">
+                    <div class="hud-section">
+                        <span class="hud-label">⭐ Level:</span>
+                        <span id="level">1</span>
+                    </div>
+                    <div class="hud-section">
+                        <span class="hud-label">📚 XP:</span>
+                        <div class="progress-bar">
+                            <div id="xp-bar" class="progress-fill"></div>
+                        </div>
+                        <span id="xp-text">0/100</span>
+                    </div>
+                    <div class="hud-section">
+                        <span class="hud-label">☁️ Credits:</span>
+                        <span id="credits">100</span>
+                    </div>
+                </div>
+
+                <div class="hud-right">
+                    <button class="hud-btn" id="open-character" title="Character Sheet (C)">⚔️</button>
+                    <button class="hud-btn" id="open-quests" title="Quest Log (Q)">📜</button>
+                    <button class="hud-btn" id="hud-shop-btn" title="Shop (E)">🛒</button>
                 </div>
             </div>
 
@@ -111,8 +134,111 @@
         </div>
     </div>
 
+    <!-- RPG Character Sheet -->
+    <div id="character-sheet" class="modal hidden">
+        <div class="modal-content rpg-sheet">
+            <div class="modal-header">
+                <h2>⚔️ Character Sheet</h2>
+                <button class="close-btn" id="close-character">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="character-info">
+                    <div class="char-portrait">🧑‍🌾</div>
+                    <div class="char-details">
+                        <h3 id="char-name">Cloud Practitioner</h3>
+                        <p id="char-title" class="char-title">Novice</p>
+                        <div class="stat-bars">
+                            <div class="stat-bar-container">
+                                <span>HP:</span>
+                                <div class="stat-bar health-bar">
+                                    <div id="hp-fill" class="stat-bar-fill"></div>
+                                </div>
+                                <span id="hp-text">100/100</span>
+                            </div>
+                            <div class="stat-bar-container">
+                                <span>MP:</span>
+                                <div class="stat-bar mana-bar">
+                                    <div id="mp-fill" class="stat-bar-fill"></div>
+                                </div>
+                                <span id="mp-text">50/50</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-icon">🖥️</div>
+                        <div class="stat-name">Compute</div>
+                        <div id="stat-compute" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-icon">📦</div>
+                        <div class="stat-name">Storage</div>
+                        <div id="stat-storage" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-icon">🌐</div>
+                        <div class="stat-name">Network</div>
+                        <div id="stat-networking" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-icon">🛡️</div>
+                        <div class="stat-name">Security</div>
+                        <div id="stat-security" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-icon">🗄️</div>
+                        <div class="stat-name">Database</div>
+                        <div id="stat-database" class="stat-value">0</div>
+                    </div>
+                </div>
+
+                <div class="combat-stats">
+                    <div class="combat-stat">⚔️ Attack: <span id="stat-attack">10</span></div>
+                    <div class="combat-stat">🛡️ Defense: <span id="stat-defense">5</span></div>
+                    <div class="combat-stat">💥 Crit Chance: <span id="stat-crit">5</span>%</div>
+                </div>
+
+                <h3>Equipment</h3>
+                <div class="equipment-grid">
+                    <div class="equip-slot" data-slot="weapon">
+                        <div class="slot-label">Weapon</div>
+                        <div id="slot-weapon" class="slot-content">⚔️</div>
+                    </div>
+                    <div class="equip-slot" data-slot="armor">
+                        <div class="slot-label">Armor</div>
+                        <div id="slot-armor" class="slot-content">🛡️</div>
+                    </div>
+                    <div class="equip-slot" data-slot="accessory">
+                        <div class="slot-label">Accessory</div>
+                        <div id="slot-accessory" class="slot-content">💍</div>
+                    </div>
+                </div>
+
+                <div class="skill-points">
+                    <h3>💫 Skill Points Available: <span id="skill-points">0</span></h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quest Log -->
+    <div id="quest-log" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📜 Quest Log</h2>
+                <button class="close-btn" id="close-quests">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="quest-list"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="game-data.js"></script>
     <script src="quiz-data.js"></script>
+    <script src="rpg-data.js"></script>
     <script src="game.js"></script>
 </body>
 </html>
