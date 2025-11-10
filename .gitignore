@@ -17,5 +17,8 @@ npm-debug.log*
 *.tmp
 .cache/
 
+# Build artifacts
+*.zip
+
 # Don't ignore any source files for this project
 # (This is a simple game with no build process)
