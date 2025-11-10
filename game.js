@@ -230,101 +230,246 @@ Created with ☁️ for AWS learners everywhere.`);
     }
 
     render() {
-        const tileSize = Math.min(
-            this.canvas.width / gameData.mapLayout.width,
-            this.canvas.height / gameData.mapLayout.height
+        // Isometric tile dimensions
+        const baseSize = Math.min(
+            this.canvas.width / (gameData.mapLayout.width + gameData.mapLayout.height),
+            this.canvas.height / (gameData.mapLayout.width + gameData.mapLayout.height)
         );
 
-        // Clear canvas
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        const tileWidth = baseSize * 2;
+        const tileHeight = baseSize;
 
-        // Draw zones
+        // Offset to center the map
+        const offsetX = this.canvas.width / 2;
+        const offsetY = this.canvas.height / 4;
+
+        // Clear canvas with gradient background
+        const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+        gradient.addColorStop(0, '#0a1929');
+        gradient.addColorStop(0.5, '#132f4c');
+        gradient.addColorStop(1, '#1a1a2e');
+        this.ctx.fillStyle = gradient;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Convert 2D coords to isometric
+        const toIso = (x, y) => {
+            return {
+                x: offsetX + (x - y) * (tileWidth / 2),
+                y: offsetY + (x + y) * (tileHeight / 2)
+            };
+        };
+
+        // Draw all elements in correct depth order (back to front)
+        const renderItems = [];
+
+        // Add zone tiles
         for (const zone of gameData.mapLayout.layers.zones) {
-            this.ctx.fillStyle = zone.color + '33';
-            this.ctx.fillRect(
-                zone.x * tileSize,
-                zone.y * tileSize,
-                zone.width * tileSize,
-                zone.height * tileSize
-            );
-
-            // Zone label
-            this.ctx.fillStyle = zone.color;
-            this.ctx.font = 'bold 16px monospace';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText(
-                zone.name,
-                (zone.x + zone.width / 2) * tileSize,
-                (zone.y + 1) * tileSize
-            );
-        }
-
-        // Draw grid
-        this.ctx.strokeStyle = '#ffffff11';
-        this.ctx.lineWidth = 1;
-        for (let x = 0; x <= gameData.mapLayout.width; x++) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x * tileSize, 0);
-            this.ctx.lineTo(x * tileSize, this.canvas.height);
-            this.ctx.stroke();
-        }
-        for (let y = 0; y <= gameData.mapLayout.height; y++) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, y * tileSize);
-            this.ctx.lineTo(this.canvas.width, y * tileSize);
-            this.ctx.stroke();
-        }
-
-        // Draw planted services
-        this.ctx.font = `${tileSize * 0.8}px monospace`;
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        for (const planted of this.gameState.plantedServices) {
-            const service = getServiceById(planted.serviceId);
-            if (service) {
-                this.ctx.fillText(
-                    service.emoji,
-                    planted.x * tileSize + tileSize / 2,
-                    planted.y * tileSize + tileSize / 2
-                );
+            for (let tx = zone.x; tx < zone.x + zone.width; tx++) {
+                for (let ty = zone.y; ty < zone.y + zone.height; ty++) {
+                    renderItems.push({
+                        type: 'tile',
+                        x: tx,
+                        y: ty,
+                        zone: zone,
+                        depth: tx + ty
+                    });
+                }
             }
         }
 
-        // Draw NPCs
+        // Add planted services
+        for (const planted of this.gameState.plantedServices) {
+            renderItems.push({
+                type: 'service',
+                x: planted.x,
+                y: planted.y,
+                data: planted,
+                depth: planted.x + planted.y + 0.5
+            });
+        }
+
+        // Add NPCs
         const unlockedNPCs = getUnlockedNPCs(this.gameState.level);
         for (const npc of unlockedNPCs) {
-            this.ctx.fillText(
-                npc.emoji,
-                npc.position.x * tileSize + tileSize / 2,
-                npc.position.y * tileSize + tileSize / 2
-            );
+            renderItems.push({
+                type: 'npc',
+                x: npc.position.x,
+                y: npc.position.y,
+                data: npc,
+                depth: npc.position.x + npc.position.y + 0.5
+            });
+        }
 
-            // NPC name on hover
-            if (this.nearbyNPC && this.nearbyNPC.id === npc.id) {
-                this.ctx.fillStyle = '#ffffff';
-                this.ctx.fillRect(
-                    npc.position.x * tileSize - 30,
-                    npc.position.y * tileSize - 25,
-                    120,
-                    20
-                );
-                this.ctx.fillStyle = '#000000';
-                this.ctx.font = '12px monospace';
-                this.ctx.fillText(
-                    npc.name,
-                    npc.position.x * tileSize + tileSize / 2,
-                    npc.position.y * tileSize - 15
-                );
-                this.ctx.font = `${tileSize * 0.8}px monospace`;
+        // Add player
+        renderItems.push({
+            type: 'player',
+            x: this.player.x,
+            y: this.player.y,
+            depth: this.player.x + this.player.y + 0.6
+        });
+
+        // Sort by depth (painter's algorithm)
+        renderItems.sort((a, b) => a.depth - b.depth);
+
+        // Render all items
+        for (const item of renderItems) {
+            const iso = toIso(item.x, item.y);
+
+            if (item.type === 'tile') {
+                this.drawIsometricTile(iso.x, iso.y, tileWidth, tileHeight, item.zone.color);
+            } else if (item.type === 'service') {
+                const service = getServiceById(item.data.serviceId);
+                if (service) {
+                    this.drawIsometricSprite(iso.x, iso.y, service.emoji, tileWidth, '#4CAF50');
+                }
+            } else if (item.type === 'npc') {
+                this.drawIsometricSprite(iso.x, iso.y, item.data.emoji, tileWidth, '#667eea');
+
+                // NPC name on hover
+                if (this.nearbyNPC && this.nearbyNPC.id === item.data.id) {
+                    this.drawNameTag(iso.x, iso.y - tileHeight, item.data.name);
+                }
+            } else if (item.type === 'player') {
+                this.drawIsometricSprite(iso.x, iso.y, this.player.emoji, tileWidth, '#FFD700', true);
             }
         }
 
-        // Draw player
-        this.ctx.fillText(
-            this.player.emoji,
-            this.player.x * tileSize + tileSize / 2,
-            this.player.y * tileSize + tileSize / 2
-        );
+        // Draw zone labels
+        for (const zone of gameData.mapLayout.layers.zones) {
+            const centerIso = toIso(
+                zone.x + zone.width / 2,
+                zone.y + zone.height / 2
+            );
+            this.drawZoneLabel(centerIso.x, centerIso.y - tileHeight * 2, zone.name, zone.color);
+        }
+    }
+
+    drawIsometricTile(x, y, width, height, color) {
+        this.ctx.save();
+        this.ctx.beginPath();
+
+        // Draw diamond shape for isometric tile
+        this.ctx.moveTo(x, y);
+        this.ctx.lineTo(x + width / 2, y + height / 2);
+        this.ctx.lineTo(x, y + height);
+        this.ctx.lineTo(x - width / 2, y + height / 2);
+        this.ctx.closePath();
+
+        // Fill with gradient
+        const gradient = this.ctx.createLinearGradient(x - width / 2, y, x + width / 2, y + height);
+        gradient.addColorStop(0, color + '40');
+        gradient.addColorStop(0.5, color + '60');
+        gradient.addColorStop(1, color + '30');
+        this.ctx.fillStyle = gradient;
+        this.ctx.fill();
+
+        // Subtle border
+        this.ctx.strokeStyle = color + '80';
+        this.ctx.lineWidth = 1;
+        this.ctx.stroke();
+
+        this.ctx.restore();
+    }
+
+    drawIsometricSprite(x, y, emoji, tileWidth, glowColor, isPlayer = false) {
+        this.ctx.save();
+
+        // Shadow
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        this.ctx.beginPath();
+        this.ctx.ellipse(x, y + tileWidth / 4, tileWidth / 4, tileWidth / 8, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Glow effect
+        if (isPlayer || this.nearbyNPC) {
+            this.ctx.shadowColor = glowColor;
+            this.ctx.shadowBlur = 20;
+        }
+
+        // Sprite with elevation
+        const spriteY = y - tileWidth / 3;
+        this.ctx.font = `${tileWidth / 2}px Arial`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+
+        // Add subtle bounce animation for player
+        if (isPlayer) {
+            const bounce = Math.sin(Date.now() / 200) * 3;
+            this.ctx.fillText(emoji, x, spriteY + bounce);
+        } else {
+            this.ctx.fillText(emoji, x, spriteY);
+        }
+
+        this.ctx.restore();
+    }
+
+    drawNameTag(x, y, name) {
+        this.ctx.save();
+
+        // Measure text
+        this.ctx.font = 'bold 14px Segoe UI';
+        const metrics = this.ctx.measureText(name);
+        const padding = 8;
+        const width = metrics.width + padding * 2;
+        const height = 24;
+
+        // Background with glassmorphism
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        this.ctx.shadowBlur = 10;
+
+        this.roundRect(x - width / 2, y - height / 2, width, height, 8);
+        this.ctx.fill();
+
+        // Border
+        this.ctx.strokeStyle = 'rgba(102, 126, 234, 0.8)';
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+
+        // Text
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(name, x, y);
+
+        this.ctx.restore();
+    }
+
+    drawZoneLabel(x, y, name, color) {
+        this.ctx.save();
+
+        this.ctx.font = 'bold 18px Segoe UI';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+
+        // Text shadow
+        this.ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.shadowBlur = 10;
+        this.ctx.shadowOffsetY = 2;
+
+        // Gradient text
+        const gradient = this.ctx.createLinearGradient(x - 50, y, x + 50, y);
+        gradient.addColorStop(0, color);
+        gradient.addColorStop(1, color + 'cc');
+        this.ctx.fillStyle = gradient;
+        this.ctx.fillText(name, x, y);
+
+        this.ctx.restore();
+    }
+
+    roundRect(x, y, width, height, radius) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + radius, y);
+        this.ctx.lineTo(x + width - radius, y);
+        this.ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        this.ctx.lineTo(x + width, y + height - radius);
+        this.ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        this.ctx.lineTo(x + radius, y + height);
+        this.ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        this.ctx.lineTo(x, y + radius);
+        this.ctx.quadraticCurveTo(x, y, x + radius, y);
+        this.ctx.closePath();
     }
 
     interactWithNPC(npc) {
