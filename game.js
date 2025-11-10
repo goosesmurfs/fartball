@@ -21,14 +21,31 @@ class CloudFarmGame {
             npcInteractions: []
         };
 
-        // Player
+        // Player with smooth movement
         this.player = {
             x: 15,
             y: 10,
+            vx: 0, // velocity
+            vy: 0,
             size: 1,
-            speed: 0.15,
-            emoji: '🧑‍🌾'
+            speed: 0.2,
+            maxSpeed: 0.2,
+            acceleration: 0.015,
+            friction: 0.85,
+            emoji: '🧑‍🌾',
+            direction: 'down',
+            walkCycle: 0
         };
+
+        // Camera with smooth following
+        this.camera = {
+            x: this.player.x,
+            y: this.player.y,
+            smoothing: 0.1
+        };
+
+        // Particle system
+        this.particles = [];
 
         // Current quiz
         this.currentQuiz = null;
@@ -50,9 +67,14 @@ class CloudFarmGame {
         // Animation
         this.lastFrameTime = 0;
         this.animationFrame = null;
+        this.time = 0;
 
         // Interaction
         this.nearbyNPC = null;
+
+        // Environmental effects
+        this.floatingClouds = this.generateClouds();
+        this.stars = this.generateStars();
     }
 
     setupUI() {
@@ -176,30 +198,126 @@ Created with ☁️ for AWS learners everywhere.`);
     }
 
     update(deltaTime) {
-        // Player movement
-        let moved = false;
-        const moveX = this.player.x;
-        const moveY = this.player.y;
+        this.time += deltaTime * 0.001; // Convert to seconds
+
+        // Smooth player movement with acceleration
+        let targetVx = 0;
+        let targetVy = 0;
 
         if (this.keys['arrowup'] || this.keys['w']) {
-            this.player.y = Math.max(0, this.player.y - this.player.speed);
-            moved = true;
+            targetVy = -this.player.maxSpeed;
+            this.player.direction = 'up';
         }
         if (this.keys['arrowdown'] || this.keys['s']) {
-            this.player.y = Math.min(gameData.mapLayout.height - 1, this.player.y + this.player.speed);
-            moved = true;
+            targetVy = this.player.maxSpeed;
+            this.player.direction = 'down';
         }
         if (this.keys['arrowleft'] || this.keys['a']) {
-            this.player.x = Math.max(0, this.player.x - this.player.speed);
-            moved = true;
+            targetVx = -this.player.maxSpeed;
+            this.player.direction = 'left';
         }
         if (this.keys['arrowright'] || this.keys['d']) {
-            this.player.x = Math.min(gameData.mapLayout.width - 1, this.player.x + this.player.speed);
-            moved = true;
+            targetVx = this.player.maxSpeed;
+            this.player.direction = 'right';
         }
+
+        // Apply acceleration
+        this.player.vx += (targetVx - this.player.vx) * this.player.acceleration;
+        this.player.vy += (targetVy - this.player.vy) * this.player.acceleration;
+
+        // Apply friction when not moving
+        if (targetVx === 0) this.player.vx *= this.player.friction;
+        if (targetVy === 0) this.player.vy *= this.player.friction;
+
+        // Update position with boundaries
+        this.player.x = Math.max(0, Math.min(gameData.mapLayout.width - 1, this.player.x + this.player.vx));
+        this.player.y = Math.max(0, Math.min(gameData.mapLayout.height - 1, this.player.y + this.player.vy));
+
+        // Update walk cycle
+        if (Math.abs(this.player.vx) > 0.01 || Math.abs(this.player.vy) > 0.01) {
+            this.player.walkCycle += deltaTime * 0.01;
+
+            // Create dust particles when walking
+            if (Math.random() < 0.3) {
+                this.createParticle(this.player.x, this.player.y, 'dust');
+            }
+        }
+
+        // Smooth camera following
+        this.camera.x += (this.player.x - this.camera.x) * this.camera.smoothing;
+        this.camera.y += (this.player.y - this.camera.y) * this.camera.smoothing;
+
+        // Update particles
+        this.updateParticles(deltaTime);
 
         // Check for nearby NPCs
         this.checkNearbyNPCs();
+
+        // Update clouds
+        this.updateClouds(deltaTime);
+    }
+
+    generateClouds() {
+        const clouds = [];
+        for (let i = 0; i < 8; i++) {
+            clouds.push({
+                x: Math.random() * 40 - 5,
+                y: Math.random() * 30 - 5,
+                size: 20 + Math.random() * 30,
+                speed: 0.002 + Math.random() * 0.003,
+                opacity: 0.1 + Math.random() * 0.15
+            });
+        }
+        return clouds;
+    }
+
+    generateStars() {
+        const stars = [];
+        for (let i = 0; i < 50; i++) {
+            stars.push({
+                x: Math.random() * 40,
+                y: Math.random() * 30,
+                size: 1 + Math.random() * 2,
+                twinkle: Math.random() * Math.PI * 2,
+                twinkleSpeed: 0.002 + Math.random() * 0.003
+            });
+        }
+        return stars;
+    }
+
+    updateClouds(deltaTime) {
+        for (const cloud of this.floatingClouds) {
+            cloud.x += cloud.speed * deltaTime * 0.1;
+            if (cloud.x > 40) cloud.x = -10;
+        }
+    }
+
+    createParticle(x, y, type) {
+        const particle = {
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 0.05,
+            vy: (Math.random() - 0.5) * 0.05 - 0.02,
+            life: 1,
+            maxLife: 1,
+            size: 2 + Math.random() * 3,
+            type: type
+        };
+        this.particles.push(particle);
+    }
+
+    updateParticles(deltaTime) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.001; // gravity
+            p.life -= deltaTime * 0.001;
+
+            if (p.life <= 0) {
+                this.particles.splice(i, 1);
+            }
+        }
     }
 
     checkNearbyNPCs() {
@@ -239,19 +357,26 @@ Created with ☁️ for AWS learners everywhere.`);
         const tileWidth = baseSize * 2;
         const tileHeight = baseSize;
 
-        // Offset to center the map
-        const offsetX = this.canvas.width / 2;
-        const offsetY = this.canvas.height / 4;
+        // Offset to center the map with camera
+        const offsetX = this.canvas.width / 2 - (this.camera.x - this.camera.y) * (tileWidth / 2);
+        const offsetY = this.canvas.height / 4 - (this.camera.x + this.camera.y) * (tileHeight / 2) + this.canvas.height * 0.2;
 
-        // Clear canvas with gradient background
+        // Clear canvas with animated gradient background
         const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-        gradient.addColorStop(0, '#0a1929');
-        gradient.addColorStop(0.5, '#132f4c');
-        gradient.addColorStop(1, '#1a1a2e');
+        const skyShift = Math.sin(this.time * 0.5) * 0.1;
+        gradient.addColorStop(0, this.lerpColor('#0a1929', '#1a2535', skyShift));
+        gradient.addColorStop(0.5, this.lerpColor('#132f4c', '#1e3a5c', skyShift));
+        gradient.addColorStop(1, this.lerpColor('#1a1a2e', '#2a2a3e', skyShift));
         this.ctx.fillStyle = gradient;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Convert 2D coords to isometric
+        // Draw twinkling stars
+        this.drawStars(offsetX, offsetY, tileWidth, tileHeight);
+
+        // Draw floating clouds
+        this.drawClouds(offsetX, offsetY, tileWidth, tileHeight);
+
+        // Convert 2D coords to isometric with camera offset
         const toIso = (x, y) => {
             return {
                 x: offsetX + (x - y) * (tileWidth / 2),
@@ -342,6 +467,100 @@ Created with ☁️ for AWS learners everywhere.`);
             );
             this.drawZoneLabel(centerIso.x, centerIso.y - tileHeight * 2, zone.name, zone.color);
         }
+
+        // Draw particles
+        this.drawParticles(toIso, tileWidth);
+    }
+
+    drawStars(offsetX, offsetY, tileWidth, tileHeight) {
+        for (const star of this.stars) {
+            const iso = {
+                x: offsetX + (star.x - star.y) * (tileWidth / 2),
+                y: offsetY + (star.x + star.y) * (tileHeight / 2)
+            };
+
+            star.twinkle += star.twinkleSpeed * 16; // frame-based
+            const opacity = 0.3 + Math.sin(star.twinkle) * 0.3;
+
+            this.ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+            this.ctx.beginPath();
+            this.ctx.arc(iso.x, iso.y, star.size, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Star glow
+            if (opacity > 0.5) {
+                this.ctx.fillStyle = `rgba(255, 255, 255, ${(opacity - 0.5) * 0.3})`;
+                this.ctx.beginPath();
+                this.ctx.arc(iso.x, iso.y, star.size * 2, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+        }
+    }
+
+    drawClouds(offsetX, offsetY, tileWidth, tileHeight) {
+        for (const cloud of this.floatingClouds) {
+            const iso = {
+                x: offsetX + (cloud.x - cloud.y) * (tileWidth / 2),
+                y: offsetY + (cloud.x + cloud.y) * (tileHeight / 2)
+            };
+
+            this.ctx.save();
+            this.ctx.globalAlpha = cloud.opacity;
+
+            // Draw fluffy cloud
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.beginPath();
+            this.ctx.arc(iso.x, iso.y, cloud.size * 0.6, 0, Math.PI * 2);
+            this.ctx.arc(iso.x + cloud.size * 0.4, iso.y, cloud.size * 0.5, 0, Math.PI * 2);
+            this.ctx.arc(iso.x - cloud.size * 0.4, iso.y, cloud.size * 0.4, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.restore();
+        }
+    }
+
+    drawParticles(toIso, tileWidth) {
+        for (const p of this.particles) {
+            const iso = toIso(p.x, p.y);
+            const alpha = p.life / p.maxLife;
+
+            this.ctx.save();
+            this.ctx.globalAlpha = alpha;
+
+            if (p.type === 'dust') {
+                this.ctx.fillStyle = '#8B7355';
+                this.ctx.beginPath();
+                this.ctx.arc(iso.x, iso.y, p.size, 0, Math.PI * 2);
+                this.ctx.fill();
+            } else if (p.type === 'sparkle') {
+                this.ctx.fillStyle = '#FFD700';
+                this.ctx.shadowColor = '#FFD700';
+                this.ctx.shadowBlur = 10;
+                this.ctx.beginPath();
+                this.ctx.arc(iso.x, iso.y, p.size, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            this.ctx.restore();
+        }
+    }
+
+    lerpColor(color1, color2, factor) {
+        const c1 = this.hexToRgb(color1);
+        const c2 = this.hexToRgb(color2);
+        const r = Math.round(c1.r + (c2.r - c1.r) * factor);
+        const g = Math.round(c1.g + (c2.g - c1.g) * factor);
+        const b = Math.round(c1.b + (c2.b - c1.b) * factor);
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    hexToRgb(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : { r: 0, g: 0, b: 0 };
     }
 
     drawIsometricTile(x, y, width, height, color) {
@@ -355,50 +574,120 @@ Created with ☁️ for AWS learners everywhere.`);
         this.ctx.lineTo(x - width / 2, y + height / 2);
         this.ctx.closePath();
 
-        // Fill with gradient
+        // Fill with enhanced gradient
         const gradient = this.ctx.createLinearGradient(x - width / 2, y, x + width / 2, y + height);
-        gradient.addColorStop(0, color + '40');
-        gradient.addColorStop(0.5, color + '60');
-        gradient.addColorStop(1, color + '30');
+        gradient.addColorStop(0, color + '50');
+        gradient.addColorStop(0.3, color + '70');
+        gradient.addColorStop(0.7, color + '60');
+        gradient.addColorStop(1, color + '40');
         this.ctx.fillStyle = gradient;
         this.ctx.fill();
 
+        // Add texture pattern
+        this.ctx.globalAlpha = 0.15;
+        this.ctx.fillStyle = this.createTilePattern(color);
+        this.ctx.fill();
+        this.ctx.globalAlpha = 1;
+
+        // Highlight edge
+        this.ctx.strokeStyle = color + 'aa';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y);
+        this.ctx.lineTo(x + width / 2, y + height / 2);
+        this.ctx.stroke();
+
+        // Shadow edge
+        this.ctx.strokeStyle = color + '40';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y + height);
+        this.ctx.lineTo(x - width / 2, y + height / 2);
+        this.ctx.stroke();
+
         // Subtle border
-        this.ctx.strokeStyle = color + '80';
-        this.ctx.lineWidth = 1;
+        this.ctx.strokeStyle = color + '60';
+        this.ctx.lineWidth = 0.5;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y);
+        this.ctx.lineTo(x + width / 2, y + height / 2);
+        this.ctx.lineTo(x, y + height);
+        this.ctx.lineTo(x - width / 2, y + height / 2);
+        this.ctx.closePath();
         this.ctx.stroke();
 
         this.ctx.restore();
     }
 
+    createTilePattern(color) {
+        // Create subtle noise pattern for tiles
+        const hash = color.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0);
+        const pattern = ((hash % 3) + 1) / 10;
+        return `rgba(255, 255, 255, ${pattern})`;
+    }
+
     drawIsometricSprite(x, y, emoji, tileWidth, glowColor, isPlayer = false) {
         this.ctx.save();
 
-        // Shadow
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        // Enhanced shadow with gradient
+        const shadowGradient = this.ctx.createRadialGradient(x, y + tileWidth / 4, 0, x, y + tileWidth / 4, tileWidth / 3);
+        shadowGradient.addColorStop(0, 'rgba(0, 0, 0, 0.4)');
+        shadowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        this.ctx.fillStyle = shadowGradient;
         this.ctx.beginPath();
-        this.ctx.ellipse(x, y + tileWidth / 4, tileWidth / 4, tileWidth / 8, 0, 0, Math.PI * 2);
+        this.ctx.ellipse(x, y + tileWidth / 4, tileWidth / 3, tileWidth / 9, 0, 0, Math.PI * 2);
         this.ctx.fill();
 
-        // Glow effect
-        if (isPlayer || this.nearbyNPC) {
+        // Sprite with elevation
+        let spriteY = y - tileWidth / 3;
+
+        // Add animation
+        if (isPlayer) {
+            // Smooth bouncing for player
+            const bounce = Math.sin(this.time * 3) * 4;
+            spriteY += bounce;
+
+            // Walking tilt effect
+            const speed = Math.sqrt(this.player.vx * this.player.vx + this.player.vy * this.player.vy);
+            if (speed > 0.01) {
+                const tilt = Math.sin(this.player.walkCycle) * 2;
+                spriteY += tilt;
+            }
+
+            // Pulsing glow
+            this.ctx.shadowColor = glowColor;
+            this.ctx.shadowBlur = 25 + Math.sin(this.time * 2) * 5;
+
+            // Outer glow ring
+            const glowGradient = this.ctx.createRadialGradient(x, spriteY, 0, x, spriteY, tileWidth / 1.5);
+            glowGradient.addColorStop(0, glowColor + '00');
+            glowGradient.addColorStop(0.5, glowColor + '30');
+            glowGradient.addColorStop(1, glowColor + '00');
+            this.ctx.fillStyle = glowGradient;
+            this.ctx.beginPath();
+            this.ctx.arc(x, spriteY, tileWidth / 1.5, 0, Math.PI * 2);
+            this.ctx.fill();
+        } else if (this.nearbyNPC) {
+            // Gentle glow for nearby NPCs
             this.ctx.shadowColor = glowColor;
             this.ctx.shadowBlur = 20;
+
+            // Subtle float animation for NPCs
+            spriteY += Math.sin(this.time * 1.5 + x) * 2;
         }
 
-        // Sprite with elevation
-        const spriteY = y - tileWidth / 3;
-        this.ctx.font = `${tileWidth / 2}px Arial`;
+        // Draw sprite with better rendering
+        this.ctx.font = `${tileWidth / 1.8}px Arial`;
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
 
-        // Add subtle bounce animation for player
-        if (isPlayer) {
-            const bounce = Math.sin(Date.now() / 200) * 3;
-            this.ctx.fillText(emoji, x, spriteY + bounce);
-        } else {
-            this.ctx.fillText(emoji, x, spriteY);
-        }
+        // Add outline for better visibility
+        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+        this.ctx.lineWidth = 3;
+        this.ctx.strokeText(emoji, x, spriteY);
+
+        // Draw the emoji
+        this.ctx.fillText(emoji, x, spriteY);
 
         this.ctx.restore();
     }
