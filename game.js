@@ -5,20 +5,41 @@ class CloudFarmGame {
         this.canvas = document.getElementById('game-canvas');
         this.ctx = this.canvas.getContext('2d');
 
-        // Game state
+        // Game state with full RPG system
         this.gameState = {
             day: 1,
             credits: 100,
             level: 1,
             xp: 0,
             xpToNextLevel: 100,
+
+            // RPG Stats
+            stats: JSON.parse(JSON.stringify(rpgData.characterStats)),
+            equipment: {
+                weapon: null,
+                armor: null,
+                accessory: null
+            },
+            unlockedSkills: [],
+            skillPoints: 0,
+
+            // Quests
+            activeQuests: [],
+            completedQuests: [],
+            questProgress: {},
+
+            // Inventory
             inventory: [],
             plantedServices: [],
             unlockedAchievements: [],
             dailyTaskProgress: {},
             quizStreak: 0,
             totalQuizzes: 0,
-            npcInteractions: []
+            npcInteractions: [],
+            perfectScores: 0,
+
+            // Titles
+            title: 'Novice'
         };
 
         // Player with smooth movement
@@ -93,6 +114,13 @@ class CloudFarmGame {
 
         // Shop modal
         document.getElementById('close-shop').addEventListener('click', () => this.closeShop());
+        document.getElementById('hud-shop-btn')?.addEventListener('click', () => this.openShop());
+
+        // RPG modals
+        document.getElementById('open-character')?.addEventListener('click', () => this.openCharacterSheet());
+        document.getElementById('close-character')?.addEventListener('click', () => this.closeCharacterSheet());
+        document.getElementById('open-quests')?.addEventListener('click', () => this.openQuestLog());
+        document.getElementById('close-quests')?.addEventListener('click', () => this.closeQuestLog());
     }
 
     setupInput() {
@@ -105,9 +133,15 @@ class CloudFarmGame {
                 this.interactWithNPC(this.nearbyNPC);
             }
 
-            // Shop
+            // Hotkeys
             if (e.key.toLowerCase() === 'e') {
                 this.openShop();
+            }
+            if (e.key.toLowerCase() === 'c') {
+                this.openCharacterSheet();
+            }
+            if (e.key.toLowerCase() === 'q') {
+                this.openQuestLog();
             }
         });
 
@@ -123,13 +157,33 @@ class CloudFarmGame {
             level: 1,
             xp: 0,
             xpToNextLevel: 100,
+
+            // RPG Stats
+            stats: JSON.parse(JSON.stringify(rpgData.characterStats)),
+            equipment: {
+                weapon: null,
+                armor: null,
+                accessory: null
+            },
+            unlockedSkills: [],
+            skillPoints: 0,
+
+            // Quests
+            activeQuests: ['first-steps'], // Start with first quest
+            completedQuests: [],
+            questProgress: {
+                'first-steps': { 'quiz': 0 }
+            },
+
             inventory: [],
             plantedServices: [],
             unlockedAchievements: [],
             dailyTaskProgress: { quiz: 0, social: 0, farming: 0 },
             quizStreak: 0,
             totalQuizzes: 0,
-            npcInteractions: []
+            npcInteractions: [],
+            perfectScores: 0,
+            title: 'Novice'
         };
 
         this.showGame();
@@ -908,6 +962,28 @@ Created with ☁️ for AWS learners everywhere.`);
             this.gameState.credits += totalReward;
             this.addXP(this.quizScore * 15);
             this.gameState.quizStreak++;
+
+            // RPG Integration: Update quest progress
+            this.gameState.activeQuests.forEach(questId => {
+                // General quiz completion
+                this.updateQuestProgress(questId, 'quiz', 1);
+
+                // Category-specific quiz completion
+                if (this.currentQuiz) {
+                    this.updateQuestProgress(questId, `quiz-category-${this.currentQuiz}`, 1);
+                }
+
+                // Perfect score tracking
+                if (percentage === 100) {
+                    this.updateQuestProgress(questId, 'perfect-score', 1);
+                    this.gameState.perfectScores++;
+                }
+            });
+
+            // Grant stats based on quiz category
+            if (this.currentQuiz) {
+                this.addStatForCategory(this.currentQuiz, 1);
+            }
         } else {
             this.gameState.quizStreak = 0;
         }
@@ -1043,9 +1119,49 @@ ${passed ? `Rewards:
     levelUp() {
         this.gameState.xp -= this.gameState.xpToNextLevel;
         this.gameState.level++;
-        this.gameState.xpToNextLevel = Math.floor(this.gameState.xpToNextLevel * 1.5);
 
-        this.showNotification(`🎉 Level Up! You are now level ${this.gameState.level}!`);
+        // Use RPG experience curve if available
+        const xpForNext = getXPForLevel ? getXPForLevel(this.gameState.level) : null;
+        this.gameState.xpToNextLevel = xpForNext || Math.floor(this.gameState.xpToNextLevel * 1.5);
+
+        // Show enhanced level-up notification
+        this.showLevelUpNotification();
+
+        // Recalculate stats with new level bonuses
+        this.applyEquipmentStats();
+
+        // Process level rewards from RPG data
+        const rewards = getLevelRewards ? getLevelRewards(this.gameState.level) : null;
+        if (rewards) {
+            if (rewards.skillPoint) {
+                this.gameState.skillPoints += rewards.skillPoint;
+                this.showNotification(`💫 +${rewards.skillPoint} Skill Point!`);
+            }
+            if (rewards.credits) {
+                this.gameState.credits += rewards.credits;
+                this.showNotification(`☁️ +${rewards.credits} Credits!`);
+            }
+            if (rewards.statBonus) {
+                Object.keys(rewards.statBonus).forEach(stat => {
+                    if (this.gameState.stats[stat] !== undefined) {
+                        this.gameState.stats[stat] += rewards.statBonus[stat];
+                    }
+                });
+            }
+            if (rewards.title) {
+                this.gameState.title = rewards.title;
+                this.showNotification(`🎖️ New Title: ${rewards.title}!`);
+            }
+            if (rewards.unlockNPC) {
+                this.showNotification(`👤 New NPC Available: ${rewards.unlockNPC}!`);
+            }
+            if (rewards.unlockBoss) {
+                this.showNotification(`⚔️ Boss Battle Unlocked: ${rewards.unlockBoss}!`);
+            }
+        }
+
+        // Check for new quests to unlock
+        this.checkNewQuests();
 
         // Check level achievements
         if (this.gameState.level === 5) {
@@ -1054,8 +1170,12 @@ ${passed ? `Rewards:
         if (this.gameState.level === 10) {
             this.unlockAchievement('level-10');
         }
+        if (this.gameState.level === 20) {
+            this.unlockAchievement('cloud-architect');
+        }
 
         this.updateUI();
+        this.saveGame();
     }
 
     updateDailyTask(category, amount) {
@@ -1114,10 +1234,21 @@ ${passed ? `Rewards:
     }
 
     updateUI() {
-        document.getElementById('day-counter').textContent = this.gameState.day;
+        // Update HUD
         document.getElementById('credits').textContent = this.gameState.credits;
         document.getElementById('level').textContent = this.gameState.level;
 
+        // Update HP/MP bars
+        const stats = this.gameState.stats;
+        const hpPercent = (stats.currentHealth / stats.maxHealth) * 100;
+        const mpPercent = (stats.currentMana / stats.maxMana) * 100;
+
+        document.getElementById('hp-bar').style.width = hpPercent + '%';
+        document.getElementById('hp-display').textContent = `${Math.floor(stats.currentHealth)}/${stats.maxHealth}`;
+        document.getElementById('mp-bar').style.width = mpPercent + '%';
+        document.getElementById('mp-display').textContent = `${Math.floor(stats.currentMana)}/${stats.maxMana}`;
+
+        // Update XP bar
         const xpPercentage = (this.gameState.xp / this.gameState.xpToNextLevel) * 100;
         document.getElementById('xp-bar').style.width = xpPercentage + '%';
         document.getElementById('xp-text').textContent =
@@ -1125,27 +1256,33 @@ ${passed ? `Rewards:
 
         // Update inventory
         const inventoryDiv = document.getElementById('inventory');
-        inventoryDiv.innerHTML = this.gameState.plantedServices.length > 0
-            ? this.gameState.plantedServices.slice(-6).map(p => {
-                const service = getServiceById(p.serviceId);
-                return `<div class="inventory-item">${service.emoji}</div>`;
-            }).join('')
-            : '<div style="opacity: 0.5; grid-column: span 3; text-align: center;">Empty</div>';
+        if (inventoryDiv) {
+            inventoryDiv.innerHTML = this.gameState.plantedServices.length > 0
+                ? this.gameState.plantedServices.slice(-6).map(p => {
+                    const service = getServiceById(p.serviceId);
+                    return `<div class="inventory-item">${service.emoji}</div>`;
+                }).join('')
+                : '<div style="opacity: 0.5; grid-column: span 3; text-align: center;">Empty</div>';
+        }
 
         // Update tasks
         const tasksDiv = document.getElementById('tasks');
-        tasksDiv.innerHTML = gameData.dailyTasks.map(task => {
-            const progress = this.gameState.dailyTaskProgress[task.category] || 0;
-            const complete = progress >= task.target;
-            return `<div class="task">${complete ? '✅' : '⏳'} ${task.description} (${Math.min(progress, task.target)}/${task.target})</div>`;
-        }).join('');
+        if (tasksDiv) {
+            tasksDiv.innerHTML = gameData.dailyTasks.map(task => {
+                const progress = this.gameState.dailyTaskProgress[task.category] || 0;
+                const complete = progress >= task.target;
+                return `<div class="task">${complete ? '✅' : '⏳'} ${task.description} (${Math.min(progress, task.target)}/${task.target})</div>`;
+            }).join('');
+        }
 
         // Update achievements
         const achievementsDiv = document.getElementById('achievements');
-        achievementsDiv.innerHTML = gameData.achievements.slice(0, 6).map(achievement => {
-            const unlocked = this.gameState.unlockedAchievements.includes(achievement.id);
-            return `<div class="achievement ${unlocked ? 'unlocked' : 'locked'}">${achievement.emoji} ${achievement.name}</div>`;
-        }).join('');
+        if (achievementsDiv) {
+            achievementsDiv.innerHTML = gameData.achievements.slice(0, 6).map(achievement => {
+                const unlocked = this.gameState.unlockedAchievements.includes(achievement.id);
+                return `<div class="achievement ${unlocked ? 'unlocked' : 'locked'}">${achievement.emoji} ${achievement.name}</div>`;
+            }).join('');
+        }
 
         // Check credit milestone
         if (this.gameState.credits >= 1000) {
@@ -1165,13 +1302,337 @@ ${passed ? `Rewards:
         try {
             const saved = localStorage.getItem('cloudFarmSave');
             if (saved) {
-                this.gameState = JSON.parse(saved);
+                const loadedState = JSON.parse(saved);
+                // Migrate old saves
+                if (!loadedState.stats) {
+                    loadedState.stats = JSON.parse(JSON.stringify(rpgData.characterStats));
+                    loadedState.equipment = { weapon: null, armor: null, accessory: null };
+                    loadedState.activeQuests = [];
+                    loadedState.completedQuests = [];
+                    loadedState.questProgress = {};
+                    loadedState.skillPoints = 0;
+                    loadedState.unlockedSkills = [];
+                    loadedState.perfectScores = 0;
+                    loadedState.title = 'Novice';
+                }
+                this.gameState = loadedState;
                 return true;
             }
         } catch (e) {
             console.error('Failed to load game:', e);
         }
         return false;
+    }
+
+    // RPG System Methods
+
+    openCharacterSheet() {
+        const modal = document.getElementById('character-sheet');
+        if (!modal) return;
+
+        // Update character info
+        document.getElementById('char-title').textContent = this.gameState.title;
+
+        // Update stats
+        const stats = this.gameState.stats;
+        document.getElementById('hp-fill').style.width = (stats.currentHealth / stats.maxHealth * 100) + '%';
+        document.getElementById('hp-text').textContent = `${Math.floor(stats.currentHealth)}/${stats.maxHealth}`;
+        document.getElementById('mp-fill').style.width = (stats.currentMana / stats.maxMana * 100) + '%';
+        document.getElementById('mp-text').textContent = `${Math.floor(stats.currentMana)}/${stats.maxMana}`;
+
+        // Update AWS domain stats
+        document.getElementById('stat-compute').textContent = stats.compute;
+        document.getElementById('stat-storage').textContent = stats.storage;
+        document.getElementById('stat-networking').textContent = stats.networking;
+        document.getElementById('stat-security').textContent = stats.security;
+        document.getElementById('stat-database').textContent = stats.database;
+
+        // Update combat stats
+        document.getElementById('stat-attack').textContent = stats.attack;
+        document.getElementById('stat-defense').textContent = stats.defense;
+        document.getElementById('stat-crit').textContent = stats.critChance;
+
+        // Update equipment
+        document.getElementById('slot-weapon').textContent = this.gameState.equipment.weapon
+            ? getEquipmentById(this.gameState.equipment.weapon)?.emoji || '⚔️'
+            : '⚔️';
+        document.getElementById('slot-armor').textContent = this.gameState.equipment.armor
+            ? getEquipmentById(this.gameState.equipment.armor)?.emoji || '🛡️'
+            : '🛡️';
+        document.getElementById('slot-accessory').textContent = this.gameState.equipment.accessory
+            ? getEquipmentById(this.gameState.equipment.accessory)?.emoji || '💍'
+            : '💍';
+
+        // Update skill points
+        document.getElementById('skill-points').textContent = this.gameState.skillPoints;
+
+        modal.classList.remove('hidden');
+    }
+
+    closeCharacterSheet() {
+        document.getElementById('character-sheet')?.classList.add('hidden');
+    }
+
+    openQuestLog() {
+        const modal = document.getElementById('quest-log');
+        if (!modal) return;
+
+        const questList = document.getElementById('quest-list');
+        const quests = [...this.gameState.activeQuests, ...this.gameState.completedQuests]
+            .map(id => getQuestById(id))
+            .filter(q => q && q.requiredLevel <= this.gameState.level);
+
+        if (quests.length === 0) {
+            questList.innerHTML = '<p style="text-align: center; padding: 2rem; color: #666;">No quests available yet. Keep playing!</p>';
+        } else {
+            questList.innerHTML = quests.map(quest => {
+                const completed = this.gameState.completedQuests.includes(quest.id);
+                const progress = this.gameState.questProgress[quest.id] || {};
+
+                return `
+                    <div class="quest-item ${quest.type} ${completed ? 'completed' : ''}">
+                        <div class="quest-header">
+                            <div class="quest-name">${quest.name}</div>
+                            <div class="quest-type ${quest.type}">${quest.type}</div>
+                        </div>
+                        <div class="quest-description">${quest.description}</div>
+                        <div class="quest-objectives">
+                            ${quest.objectives.map(obj => {
+                                const current = progress[obj.type] || 0;
+                                const complete = current >= obj.target;
+                                return `
+                                    <div class="objective ${complete ? 'complete' : ''}">
+                                        <span class="objective-icon">${complete ? '✅' : '⏳'}</span>
+                                        <span>${obj.description}</span>
+                                        <span class="objective-progress">${current}/${obj.target}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        <div class="quest-rewards">
+                            ${quest.rewards.xp ? `<span class="reward-item">⭐ ${quest.rewards.xp} XP</span>` : ''}
+                            ${quest.rewards.credits ? `<span class="reward-item">☁️ ${quest.rewards.credits} Credits</span>` : ''}
+                            ${quest.rewards.skillPoint ? `<span class="reward-item">💫 ${quest.rewards.skillPoint} Skill Points</span>` : ''}
+                            ${quest.rewards.equipment ? `<span class="reward-item">⚔️ Equipment</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        modal.classList.remove('hidden');
+    }
+
+    closeQuestLog() {
+        document.getElementById('quest-log')?.classList.add('hidden');
+    }
+
+    updateQuestProgress(questId, objectiveType, amount = 1) {
+        if (!this.gameState.activeQuests.includes(questId)) return;
+
+        if (!this.gameState.questProgress[questId]) {
+            this.gameState.questProgress[questId] = {};
+        }
+
+        this.gameState.questProgress[questId][objectiveType] =
+            (this.gameState.questProgress[questId][objectiveType] || 0) + amount;
+
+        this.checkQuestCompletion(questId);
+    }
+
+    checkQuestCompletion(questId) {
+        const quest = getQuestById(questId);
+        if (!quest) return;
+
+        const progress = this.gameState.questProgress[questId] || {};
+        const allComplete = quest.objectives.every(obj => {
+            const current = progress[obj.type] || 0;
+            return current >= obj.target;
+        });
+
+        if (allComplete && !this.gameState.completedQuests.includes(questId)) {
+            this.completeQuest(questId);
+        }
+    }
+
+    completeQuest(questId) {
+        const quest = getQuestById(questId);
+        if (!quest) return;
+
+        // Move from active to completed
+        this.gameState.activeQuests = this.gameState.activeQuests.filter(id => id !== questId);
+        this.gameState.completedQuests.push(questId);
+
+        // Grant rewards
+        if (quest.rewards.xp) {
+            this.addXP(quest.rewards.xp);
+        }
+        if (quest.rewards.credits) {
+            this.gameState.credits += quest.rewards.credits;
+        }
+        if (quest.rewards.skillPoint) {
+            this.gameState.skillPoints += quest.rewards.skillPoint;
+        }
+        if (quest.rewards.equipment) {
+            const equipList = Array.isArray(quest.rewards.equipment)
+                ? quest.rewards.equipment
+                : [quest.rewards.equipment];
+
+            equipList.forEach(equipId => {
+                this.grantEquipment(equipId);
+            });
+        }
+        if (quest.rewards.statBonus) {
+            Object.keys(quest.rewards.statBonus).forEach(stat => {
+                this.gameState.stats[stat] += quest.rewards.statBonus[stat];
+            });
+        }
+
+        // Show completion notification
+        this.showLootNotification(`Quest Complete: ${quest.name}`, quest.rewards);
+
+        // Check for new quests to unlock
+        this.checkNewQuests();
+
+        this.updateUI();
+        this.saveGame();
+    }
+
+    checkNewQuests() {
+        rpgData.quests.forEach(quest => {
+            if (quest.requiredLevel <= this.gameState.level &&
+                !this.gameState.activeQuests.includes(quest.id) &&
+                !this.gameState.completedQuests.includes(quest.id)) {
+
+                this.gameState.activeQuests.push(quest.id);
+                this.showNotification(`📜 New Quest: ${quest.name}`);
+            }
+        });
+    }
+
+    grantEquipment(equipId) {
+        const equipment = getEquipmentById(equipId);
+        if (!equipment) return;
+
+        // Auto-equip if slot is empty
+        const slot = rpgData.equipment.weapons.some(w => w.id === equipId) ? 'weapon' :
+                     rpgData.equipment.armor.some(a => a.id === equipId) ? 'armor' : 'accessory';
+
+        if (!this.gameState.equipment[slot]) {
+            this.gameState.equipment[slot] = equipId;
+            this.applyEquipmentStats();
+        }
+
+        this.gameState.inventory.push(equipId);
+    }
+
+    applyEquipmentStats() {
+        // Recalculate stats based on equipment
+        const baseStats = JSON.parse(JSON.stringify(rpgData.characterStats));
+
+        // Add level bonuses
+        baseStats.attack += this.gameState.level * 2;
+        baseStats.defense += this.gameState.level;
+        baseStats.maxHealth += this.gameState.level * 5;
+        baseStats.maxMana += this.gameState.level * 2;
+
+        // Add equipment bonuses
+        Object.values(this.gameState.equipment).forEach(equipId => {
+            if (equipId) {
+                const equip = getEquipmentById(equipId);
+                if (equip && equip.stats) {
+                    Object.keys(equip.stats).forEach(stat => {
+                        if (baseStats[stat] !== undefined) {
+                            baseStats[stat] += equip.stats[stat];
+                        }
+                    });
+                }
+            }
+        });
+
+        // Maintain current HP/MP ratios
+        const hpRatio = this.gameState.stats.currentHealth / this.gameState.stats.maxHealth;
+        const mpRatio = this.gameState.stats.currentMana / this.gameState.stats.maxMana;
+
+        this.gameState.stats = baseStats;
+        this.gameState.stats.currentHealth = Math.min(baseStats.maxHealth, baseStats.maxHealth * hpRatio);
+        this.gameState.stats.currentMana = Math.min(baseStats.maxMana, baseStats.maxMana * mpRatio);
+    }
+
+    showLootNotification(title, rewards) {
+        const notification = document.createElement('div');
+        notification.className = 'loot-notification';
+
+        let rewardsHTML = '';
+        if (rewards.xp) rewardsHTML += `<div class="loot-item">⭐ ${rewards.xp} XP</div>`;
+        if (rewards.credits) rewardsHTML += `<div class="loot-item">☁️ ${rewards.credits} Credits</div>`;
+        if (rewards.skillPoint) rewardsHTML += `<div class="loot-item">💫 ${rewards.skillPoint} Skill Points</div>`;
+        if (rewards.equipment) {
+            const equipList = Array.isArray(rewards.equipment) ? rewards.equipment : [rewards.equipment];
+            equipList.forEach(equipId => {
+                const equip = getEquipmentById(equipId);
+                if (equip) {
+                    rewardsHTML += `<div class="loot-item rarity-${equip.rarity}">${equip.emoji} ${equip.name}</div>`;
+                }
+            });
+        }
+
+        notification.innerHTML = `
+            <div class="loot-title">${title}</div>
+            ${rewardsHTML}
+        `;
+
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.remove();
+        }, 4000);
+    }
+
+    showLevelUpNotification() {
+        const notification = document.createElement('div');
+        notification.className = 'level-up-notification';
+        notification.innerHTML = `
+            <h2>⭐ LEVEL UP! ⭐</h2>
+            <span class="level-number">${this.gameState.level}</span>
+            <p>You've grown stronger!</p>
+        `;
+
+        document.body.appendChild(notification);
+
+        // Create sparkle particles
+        for (let i = 0; i < 20; i++) {
+            setTimeout(() => {
+                this.createParticle(this.player.x + (Math.random() - 0.5) * 2,
+                                   this.player.y + (Math.random() - 0.5) * 2, 'sparkle');
+            }, i * 50);
+        }
+
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
+    }
+
+    addStatForCategory(category, amount) {
+        const statMap = {
+            'ec2': 'compute',
+            'lambda': 'compute',
+            'storage': 'storage',
+            'database': 'database',
+            'networking': 'networking',
+            'security': 'security',
+            'cloudConcepts': 'compute',
+            'pricing': 'storage',
+            'monitoring': 'database',
+            'support': 'security'
+        };
+
+        const stat = statMap[category];
+        if (stat && this.gameState.stats[stat] !== undefined) {
+            this.gameState.stats[stat] += amount;
+            this.applyEquipmentStats(); // Recalculate derived stats
+            this.showNotification(`📊 +${amount} ${stat.charAt(0).toUpperCase() + stat.slice(1)}!`);
+        }
     }
 }
 
