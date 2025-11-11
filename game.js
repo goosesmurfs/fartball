@@ -111,6 +111,12 @@ class CloudFarmGame {
         this.selectedService = null;
         this.hoveredNPC = null;
 
+        // Better Gameplay: Combo and streak systems
+        this.harvestStreak = 0;
+        this.comboMultiplier = 1.0;
+        this.lastHarvestTime = 0;
+        this.floatingTexts = [];
+
         // FarmVille: Farm grid configuration
         this.farmGridConfig = {
             rows: 6,
@@ -394,6 +400,16 @@ Created with ☁️ for AWS learners everywhere.`);
 
         // FarmVille: Update energy regeneration
         this.updateEnergy();
+
+        // Update floating texts
+        this.updateFloatingTexts(deltaTime);
+
+        // Update combo multiplier decay
+        const now = Date.now();
+        if (now - this.lastHarvestTime > 5000) { // 5 seconds timeout
+            this.harvestStreak = 0;
+            this.comboMultiplier = 1.0;
+        }
     }
 
     generateClouds() {
@@ -507,15 +523,42 @@ Created with ☁️ for AWS learners everywhere.`);
         // Draw particles
         this.drawFarmParticles();
 
+        // Draw floating texts (rewards, combos)
+        this.drawFloatingTexts();
+
+        // Draw combo multiplier indicator
+        if (this.comboMultiplier > 1.0) {
+            this.ctx.save();
+            this.ctx.font = 'bold 24px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillStyle = '#FFD700';
+            this.ctx.strokeStyle = '#000';
+            this.ctx.lineWidth = 3;
+            const comboText = `${this.harvestStreak}x COMBO! (${Math.floor(this.comboMultiplier * 100)}% bonus)`;
+            this.ctx.strokeText(comboText, this.canvas.width / 2, 60);
+            this.ctx.fillText(comboText, this.canvas.width / 2, 60);
+            this.ctx.restore();
+        }
+
         // Draw day counter and help text
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        this.ctx.lineWidth = 2;
+        this.roundRect(10, 15, 120, 40, 8);
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = '#FFD700';
         this.ctx.font = 'bold 20px Arial';
         this.ctx.textAlign = 'left';
-        this.ctx.fillText(`Day ${this.gameState.day}`, 20, 40);
+        this.ctx.fillText(`☀️ Day ${this.gameState.day}`, 25, 40);
+        this.ctx.restore();
 
         this.ctx.font = '14px Arial';
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        this.ctx.fillText('Click NPCs to learn AWS & take quizzes • Click plots to plant/harvest • Press N to advance day', 20, this.canvas.height - 20);
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('🎓 Click NPCs to learn AWS • 🌱 Click plots to farm • ⏭️ Press N for next day', 20, this.canvas.height - 20);
     }
 
     drawFarmPlots() {
@@ -546,29 +589,52 @@ Created with ☁️ for AWS learners everywhere.`);
                 // Unlocked plot
                 const isHovered = this.selectedPlot === plot;
 
-                // Background
-                let bgColor = '#8B7355'; // Dirt color
+                // Enhanced background with gradient
+                const gradient = this.ctx.createLinearGradient(x, y, x, y + cfg.plotSize);
 
                 if (plot.state === 'ready') {
-                    bgColor = '#90EE90'; // Light green for ready
+                    gradient.addColorStop(0, '#98FB98');
+                    gradient.addColorStop(0.5, '#90EE90');
+                    gradient.addColorStop(1, '#7CFC00');
                 } else if (plot.state === 'growing' || plot.state === 'planted') {
-                    bgColor = '#A0826D'; // Growing dirt
+                    gradient.addColorStop(0, '#B8926D');
+                    gradient.addColorStop(0.5, '#A0826D');
+                    gradient.addColorStop(1, '#8B7355');
+                } else {
+                    gradient.addColorStop(0, '#9B8365');
+                    gradient.addColorStop(0.5, '#8B7355');
+                    gradient.addColorStop(1, '#6B5345');
                 }
 
+                // Draw shadow for depth
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                this.ctx.fillRect(x + 4, y + 4, cfg.plotSize - 4, cfg.plotSize - 4);
+
+                // Main plot
                 if (isHovered) {
                     this.ctx.shadowColor = '#FFD700';
-                    this.ctx.shadowBlur = 15;
+                    this.ctx.shadowBlur = 20;
                 }
 
-                this.ctx.fillStyle = bgColor;
+                this.ctx.fillStyle = gradient;
                 this.ctx.fillRect(x + 2, y + 2, cfg.plotSize - 4, cfg.plotSize - 4);
 
                 this.ctx.shadowBlur = 0;
 
-                // Border
+                // Enhanced border with 3D effect
                 this.ctx.strokeStyle = isHovered ? '#FFD700' : '#6B5345';
-                this.ctx.lineWidth = isHovered ? 3 : 2;
+                this.ctx.lineWidth = isHovered ? 4 : 2;
                 this.ctx.strokeRect(x + 2, y + 2, cfg.plotSize - 4, cfg.plotSize - 4);
+
+                // Inner highlight for 3D effect
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                this.ctx.lineWidth = 1;
+                this.ctx.beginPath();
+                this.ctx.moveTo(x + 3, y + 3);
+                this.ctx.lineTo(x + cfg.plotSize - 3, y + 3);
+                this.ctx.moveTo(x + 3, y + 3);
+                this.ctx.lineTo(x + 3, y + cfg.plotSize - 3);
+                this.ctx.stroke();
 
                 // Content based on state
                 if (plot.state === 'empty') {
@@ -677,57 +743,123 @@ Created with ☁️ for AWS learners everywhere.`);
 
             this.ctx.save();
 
-            // Background circle
+            // Floating animation
+            const floatOffset = Math.sin(this.time * 2 + index) * 3;
+
+            // Shadow
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
             this.ctx.beginPath();
-            this.ctx.arc(pos.x, pos.y, 40, 0, Math.PI * 2);
+            this.ctx.ellipse(pos.x, pos.y + 50, 35, 10, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Gradient background circle
+            const gradient = this.ctx.createRadialGradient(pos.x, pos.y + floatOffset, 0, pos.x, pos.y + floatOffset, 50);
 
             if (isHovered) {
-                this.ctx.fillStyle = 'rgba(102, 126, 234, 0.3)';
-                this.ctx.strokeStyle = '#667eea';
-                this.ctx.lineWidth = 4;
-                this.ctx.shadowColor = '#667eea';
-                this.ctx.shadowBlur = 20;
+                gradient.addColorStop(0, 'rgba(255, 215, 0, 0.8)');
+                gradient.addColorStop(0.7, 'rgba(102, 126, 234, 0.6)');
+                gradient.addColorStop(1, 'rgba(102, 126, 234, 0.2)');
+                this.ctx.shadowColor = '#FFD700';
+                this.ctx.shadowBlur = 25;
             } else {
-                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                this.ctx.strokeStyle = '#667eea';
-                this.ctx.lineWidth = 3;
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+                gradient.addColorStop(0.7, 'rgba(102, 126, 234, 0.8)');
+                gradient.addColorStop(1, 'rgba(102, 126, 234, 0.3)');
             }
 
+            this.ctx.fillStyle = gradient;
+            this.ctx.beginPath();
+            this.ctx.arc(pos.x, pos.y + floatOffset, 45, 0, Math.PI * 2);
             this.ctx.fill();
+
+            // Border
+            this.ctx.strokeStyle = isHovered ? '#FFD700' : '#667eea';
+            this.ctx.lineWidth = isHovered ? 5 : 3;
+            this.ctx.shadowBlur = 0;
             this.ctx.stroke();
 
-            // NPC emoji
-            this.ctx.shadowBlur = 0;
+            // NPC emoji with shadow
+            this.ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            this.ctx.shadowBlur = 5;
             this.ctx.font = '40px Arial';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            this.ctx.fillText(npc.emoji, pos.x, pos.y);
+            this.ctx.fillText(npc.emoji, pos.x, pos.y + floatOffset);
 
-            // NPC name
-            this.ctx.fillStyle = '#000';
-            this.ctx.font = 'bold 14px Arial';
-            this.ctx.textAlign = 'center';
-            this.ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-            this.ctx.shadowBlur = 3;
-            this.ctx.fillText(npc.name, pos.x, pos.y + 55);
+            // NPC name with background
+            this.ctx.shadowBlur = 0;
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillRect(pos.x - 45, pos.y + 52, 90, 20);
 
-            // Pulse effect when hovered
+            this.ctx.fillStyle = '#FFD700';
+            this.ctx.font = 'bold 12px Arial';
+            this.ctx.fillText(npc.name, pos.x, pos.y + 62);
+
+            // Pulsing ring when hovered
             if (isHovered) {
-                const pulse = Math.sin(this.time * 5) * 0.3 + 0.7;
+                const pulse = Math.sin(this.time * 6) * 0.3 + 0.7;
                 this.ctx.globalAlpha = pulse;
-                this.ctx.beginPath();
-                this.ctx.arc(pos.x, pos.y, 50, 0, Math.PI * 2);
-                this.ctx.strokeStyle = '#FFD700';
-                this.ctx.lineWidth = 2;
-                this.ctx.stroke();
+                for (let i = 0; i < 3; i++) {
+                    this.ctx.beginPath();
+                    this.ctx.arc(pos.x, pos.y + floatOffset, 52 + i * 4, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = '#FFD700';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+                }
             }
 
             this.ctx.restore();
 
             // Store position for click detection
             npc.screenX = pos.x;
-            npc.screenY = pos.y;
-            npc.screenRadius = 40;
+            npc.screenY = pos.y + floatOffset;
+            npc.screenRadius = 45;
+        });
+    }
+
+    drawFloatingTexts() {
+        for (const text of this.floatingTexts) {
+            this.ctx.save();
+            this.ctx.globalAlpha = text.alpha;
+            this.ctx.font = `bold ${text.size}px Arial`;
+            this.ctx.textAlign = 'center';
+
+            // Outline
+            this.ctx.strokeStyle = '#000';
+            this.ctx.lineWidth = 4;
+            this.ctx.strokeText(text.text, text.x, text.y);
+
+            // Fill
+            this.ctx.fillStyle = text.color;
+            this.ctx.fillText(text.text, text.x, text.y);
+
+            this.ctx.restore();
+        }
+    }
+
+    updateFloatingTexts(deltaTime) {
+        for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+            const text = this.floatingTexts[i];
+            text.y -= text.speed * (deltaTime / 16);
+            text.life -= deltaTime;
+            text.alpha = Math.min(1, text.life / 1000);
+
+            if (text.life <= 0) {
+                this.floatingTexts.splice(i, 1);
+            }
+        }
+    }
+
+    createFloatingText(x, y, text, color = '#FFD700', size = 20) {
+        this.floatingTexts.push({
+            x: x,
+            y: y,
+            text: text,
+            color: color,
+            size: size,
+            speed: 1.5,
+            life: 2000,
+            alpha: 1
         });
     }
 
@@ -1067,16 +1199,38 @@ Created with ☁️ for AWS learners everywhere.`);
         const modal = document.getElementById('dialog-modal');
         document.getElementById('npc-portrait').textContent = npc.emoji;
         document.getElementById('npc-name').textContent = npc.name;
-        document.getElementById('dialog-text').textContent = text;
+
+        // BETTER LEARNING: Enhanced dialog with AWS context
+        const awsContext = this.getAWSContext(npc.quizCategory);
+        const enhancedText = `${text}\n\n💡 ${awsContext}`;
+
+        document.getElementById('dialog-text').textContent = enhancedText;
         modal.classList.remove('hidden');
 
         // Auto-offer quiz after dialog
         setTimeout(() => {
-            if (confirm(`Would you like to take a ${npc.name} quiz to earn cloud credits?`)) {
+            if (confirm(`🎓 Ready to test your ${npc.quizCategory.toUpperCase()} knowledge?\n\nTake the quiz to earn credits and XP!`)) {
                 this.closeDialog();
                 this.startQuiz(npc.quizCategory);
             }
         }, 100);
+    }
+
+    getAWSContext(category) {
+        const contexts = {
+            'ec2': 'EC2 (Elastic Compute Cloud) is like renting powerful computers in the cloud. You can scale up or down based on demand!',
+            'storage': 'Amazon S3 stores your files as objects in buckets. Think of it as an unlimited hard drive in the cloud with 99.999999999% durability!',
+            'lambda': 'Lambda lets you run code without managing servers. You only pay for the compute time you consume - perfect for event-driven apps!',
+            'database': 'AWS offers managed databases (RDS) and NoSQL (DynamoDB). Let AWS handle backups, patches, and scaling while you focus on your data!',
+            'networking': 'VPCs create isolated networks in the cloud. You control IP ranges, subnets, and security - just like your own data center!',
+            'security': 'IAM controls who can access what in AWS. Follow the principle of least privilege - only grant the permissions actually needed!',
+            'monitoring': 'CloudWatch is your eyes in the cloud. Monitor metrics, set alarms, and view logs to keep your applications healthy!',
+            'pricing': 'AWS has pay-as-you-go pricing. Use cost calculators, set budgets, and take advantage of Reserved Instances for long-term savings!',
+            'cloudConcepts': 'Cloud computing offers on-demand resources, scalability, and global reach. Master these concepts to become cloud-native!',
+            'mixed': 'AWS Cloud Practitioner covers all core services. Understanding how they work together is key to building robust cloud solutions!'
+        };
+
+        return contexts[category] || 'Learn AWS to master cloud computing!';
     }
 
     closeDialog() {
@@ -2043,21 +2197,51 @@ ${passed ? `Rewards:
         // Deduct energy
         this.gameState.energy -= 5;
 
-        // Calculate rewards (increased for harvesting)
-        const harvestReward = service.cost * 2; // Double the planting cost
-        const xpReward = service.xpReward * 2;
+        // IMPROVED GAMEPLAY: Combo system
+        const now = Date.now();
+        if (now - this.lastHarvestTime < 5000) {
+            // Within 5 seconds - continue combo
+            this.harvestStreak++;
+            this.comboMultiplier = Math.min(3.0, 1.0 + (this.harvestStreak * 0.15));
+        } else {
+            // Reset combo
+            this.harvestStreak = 1;
+            this.comboMultiplier = 1.0;
+        }
+        this.lastHarvestTime = now;
+
+        // Calculate rewards with combo multiplier
+        const baseHarvestReward = service.cost * 2;
+        const baseXPReward = service.xpReward * 2;
+
+        const harvestReward = Math.floor(baseHarvestReward * this.comboMultiplier);
+        const xpReward = Math.floor(baseXPReward * this.comboMultiplier);
 
         this.gameState.credits += harvestReward;
         this.addXP(xpReward);
 
-        // Create harvest particles
-        for (let i = 0; i < 10; i++) {
+        // Calculate plot center for floating text
+        const cfg = this.farmGridConfig;
+        const plotCenterX = cfg.offsetX + (plot.col * cfg.plotSize) + (cfg.plotSize / 2);
+        const plotCenterY = cfg.offsetY + (plot.row * cfg.plotSize) + (cfg.plotSize / 2);
+
+        // Create floating texts for rewards
+        this.createFloatingText(plotCenterX, plotCenterY - 20, `+${harvestReward} ☁️`, '#4CAF50', 22);
+        this.createFloatingText(plotCenterX, plotCenterY, `+${xpReward} ⭐`, '#FFD700', 18);
+
+        if (this.comboMultiplier > 1.0) {
+            this.createFloatingText(plotCenterX, plotCenterY + 20, `${this.harvestStreak}x COMBO!`, '#FF4500', 20);
+        }
+
+        // Enhanced harvest particles
+        for (let i = 0; i < 15; i++) {
             this.createParticle(plot.col + 0.5 + (Math.random() - 0.5),
                               plot.row + 0.5 + (Math.random() - 0.5), 'sparkle');
         }
 
         // Show harvest notification
-        this.showNotification(`✨ Harvested ${service.name}! +${harvestReward} credits, +${xpReward} XP`);
+        const comboText = this.comboMultiplier > 1.0 ? ` (${Math.floor(this.comboMultiplier * 100)}% combo!)` : '';
+        this.showNotification(`✨ Harvested ${service.name}! +${harvestReward} credits, +${xpReward} XP${comboText}`);
 
         // Reset plot to empty
         plot.state = 'empty';
