@@ -1,22 +1,23 @@
-// AWS Cloud Farm - Main Game Engine
+// AWS Tower Defense - Main Game Engine
 
 class CloudFarmGame {
     constructor() {
         this.canvas = document.getElementById('game-canvas');
         this.ctx = this.canvas.getContext('2d');
 
-        // Game state with full RPG system and FarmVille mechanics
+        // Game state with Tower Defense mechanics
         this.gameState = {
             day: 1,
-            credits: 100,
+            credits: 150, // Start with more for tower defense
             level: 1,
             xp: 0,
             xpToNextLevel: 100,
 
-            // FarmVille Energy System
-            energy: 100,
-            maxEnergy: 100,
-            lastEnergyUpdate: Date.now(),
+            // Tower Defense Stats
+            lives: 20,
+            currentWave: 0,
+            waveInProgress: false,
+            towersUnlocked: [], // Tower IDs unlocked via quizzes
 
             // RPG Stats
             stats: JSON.parse(JSON.stringify(rpgData.characterStats)),
@@ -33,8 +34,8 @@ class CloudFarmGame {
             completedQuests: [],
             questProgress: {},
 
-            // FarmVille Farm Plots (grid-based)
-            farmPlots: this.initializeFarmGrid(),
+            // Tower Defense - Placed towers
+            placedTowers: [],
 
             // Inventory
             inventory: [],
@@ -50,28 +51,20 @@ class CloudFarmGame {
             title: 'Novice'
         };
 
-        // Player with smooth movement
-        this.player = {
-            x: 15,
-            y: 10,
-            vx: 0, // velocity
-            vy: 0,
-            size: 1,
-            speed: 0.2,
-            maxSpeed: 0.2,
-            acceleration: 0.015,
-            friction: 0.85,
-            emoji: '🧑‍🌾',
-            direction: 'down',
-            walkCycle: 0
-        };
+        // Tower Defense: Active enemies
+        this.enemies = [];
+        this.projectiles = [];
+        this.enemyIdCounter = 0;
+        this.projectileIdCounter = 0;
 
-        // Camera with smooth following
-        this.camera = {
-            x: this.player.x,
-            y: this.player.y,
-            smoothing: 0.1
-        };
+        // Tower Defense: Wave spawning
+        this.waveEnemyQueue = [];
+        this.nextSpawnTime = 0;
+
+        // Tower Defense: Selection
+        this.selectedBuildSpot = null;
+        this.hoveredBuildSpot = null;
+        this.selectedTowerType = null;
 
         // Particle system
         this.particles = [];
@@ -98,60 +91,14 @@ class CloudFarmGame {
         this.animationFrame = null;
         this.time = 0;
 
-        // Interaction
-        this.nearbyNPC = null;
-
         // Environmental effects
         this.floatingClouds = this.generateClouds();
-        this.stars = this.generateStars();
-
-        // FarmVille: Selected plot and planting mode
-        this.selectedPlot = null;
-        this.plantingMode = false;
-        this.selectedService = null;
-        this.hoveredNPC = null;
-
-        // Better Gameplay: Combo and streak systems
-        this.harvestStreak = 0;
-        this.comboMultiplier = 1.0;
-        this.lastHarvestTime = 0;
         this.floatingTexts = [];
 
-        // FarmVille: Farm grid configuration
-        this.farmGridConfig = {
-            rows: 6,
-            cols: 8,
-            plotSize: 80,
-            offsetX: 100,
-            offsetY: 150
-        };
+        // Tower Defense: Build spots (from tower-defense-data.js)
+        this.buildSpots = towerDefenseData.buildSpots;
     }
 
-    // FarmVille: Initialize farm grid
-    initializeFarmGrid() {
-        const grid = [];
-        const rows = 6;
-        const cols = 8;
-
-        for (let row = 0; row < rows; row++) {
-            for (let col = 0; col < cols; col++) {
-                grid.push({
-                    id: `plot-${row}-${col}`,
-                    row: row,
-                    col: col,
-                    unlocked: row < 3 && col < 4, // Start with 12 unlocked plots
-                    state: 'empty', // empty, planted, growing, ready, harvested
-                    serviceId: null,
-                    plantedDay: null,
-                    plantedTime: null,
-                    growthProgress: 0,
-                    growthRequired: 0 // Days or time to grow
-                });
-            }
-        }
-
-        return grid;
-    }
 
     setupUI() {
         // Title screen
@@ -182,15 +129,9 @@ class CloudFarmGame {
         window.addEventListener('keydown', (e) => {
             this.keys[e.key.toLowerCase()] = true;
 
-            // Interaction
-            if (e.key === ' ' && this.nearbyNPC) {
-                e.preventDefault();
-                this.interactWithNPC(this.nearbyNPC);
-            }
-
             // Hotkeys
             if (e.key.toLowerCase() === 'e') {
-                this.openShop();
+                this.openTowerShop();
             }
             if (e.key.toLowerCase() === 'c') {
                 this.openCharacterSheet();
@@ -199,9 +140,10 @@ class CloudFarmGame {
                 this.openQuestLog();
             }
 
-            // FarmVille: Next day (for testing)
-            if (e.key.toLowerCase() === 'n') {
-                this.advanceDay();
+            // Tower Defense: Start wave
+            if (e.key.toLowerCase() === ' ' || e.key.toLowerCase() === 'w') {
+                e.preventDefault();
+                this.startNextWave();
             }
         });
 
@@ -209,35 +151,36 @@ class CloudFarmGame {
             this.keys[e.key.toLowerCase()] = false;
         });
 
-        // FarmVille: Mouse click handling for plots
+        // Tower Defense: Mouse click handling for build spots
         this.canvas.addEventListener('click', (e) => {
             const rect = this.canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
-            this.handlePlotClick(x, y);
+            this.handleBuildSpotClick(x, y);
         });
 
-        // FarmVille: Mouse move for hover effects
+        // Tower Defense: Mouse move for hover effects
         this.canvas.addEventListener('mousemove', (e) => {
             const rect = this.canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
-            this.handlePlotHover(x, y);
+            this.handleBuildSpotHover(x, y);
         });
     }
 
     startNewGame() {
         this.gameState = {
             day: 1,
-            credits: 100,
+            credits: 150,
             level: 1,
             xp: 0,
             xpToNextLevel: 100,
 
-            // FarmVille Energy System
-            energy: 100,
-            maxEnergy: 100,
-            lastEnergyUpdate: Date.now(),
+            // Tower Defense Stats
+            lives: 20,
+            currentWave: 0,
+            waveInProgress: false,
+            towersUnlocked: ['waf-tower', 'cloudfront-tower'], // Start with 2 basic towers
 
             // RPG Stats
             stats: JSON.parse(JSON.stringify(rpgData.characterStats)),
@@ -256,13 +199,13 @@ class CloudFarmGame {
                 'first-steps': { 'quiz': 0 }
             },
 
-            // FarmVille Farm Plots
-            farmPlots: this.initializeFarmGrid(),
+            // Tower Defense - Placed towers
+            placedTowers: [],
 
             inventory: [],
             plantedServices: [],
             unlockedAchievements: [],
-            dailyTaskProgress: { quiz: 0, social: 0, farming: 0 },
+            dailyTaskProgress: { quiz: 0, social: 0, defense: 0 },
             quizStreak: 0,
             totalQuizzes: 0,
             npcInteractions: [],
@@ -270,9 +213,15 @@ class CloudFarmGame {
             title: 'Novice'
         };
 
-        this.selectedPlot = null;
-        this.plantingMode = false;
-        this.selectedService = null;
+        // Reset tower defense state
+        this.enemies = [];
+        this.projectiles = [];
+        this.waveEnemyQueue = [];
+        this.enemyIdCounter = 0;
+        this.projectileIdCounter = 0;
+        this.selectedBuildSpot = null;
+        this.hoveredBuildSpot = null;
+        this.selectedTowerType = null;
 
         this.showGame();
         this.saveGame();
@@ -298,19 +247,24 @@ class CloudFarmGame {
     }
 
     showAbout() {
-        alert(`AWS Cloud Farm v1.0
+        alert(`AWS Tower Defense v1.0
 
-A Stardew Valley-inspired game to help you master the AWS Certified Cloud Practitioner exam!
+A tower defense game to help you master the AWS Certified Cloud Practitioner exam!
 
 How to Play:
-- Use ARROW KEYS or WASD to move
-- Press SPACE to interact with NPCs
-- Press E to open the service shop
-- Complete quizzes to earn cloud credits and XP
-- Plant AWS services to grow your cloud farm
-- Unlock new zones and services as you level up
+- Click build spots to place AWS security towers
+- Press SPACE or W to start the next wave
+- Press E to open the tower shop
+- Complete quizzes to unlock new AWS towers
+- Defend against cloud security threats
+- Survive waves to level up and earn credits
 
-Goal: Master all AWS CCP exam topics and become a Cloud Architect!
+Towers are AWS Services:
+- WAF, Shield, CloudFront protect against attacks
+- GuardDuty detects threats
+- Auto Scaling handles traffic spikes
+
+Goal: Master AWS security concepts and survive all waves!
 
 Created with ☁️ for AWS learners everywhere.`);
     }
@@ -342,73 +296,49 @@ Created with ☁️ for AWS learners everywhere.`);
     update(deltaTime) {
         this.time += deltaTime * 0.001; // Convert to seconds
 
-        // Smooth player movement with acceleration
-        let targetVx = 0;
-        let targetVy = 0;
+        // Tower Defense: Spawn enemies from wave queue
+        if (this.gameState.waveInProgress && this.waveEnemyQueue.length > 0) {
+            if (Date.now() >= this.nextSpawnTime) {
+                const enemyConfig = this.waveEnemyQueue.shift();
+                this.spawnEnemy(enemyConfig.type);
 
-        if (this.keys['arrowup'] || this.keys['w']) {
-            targetVy = -this.player.maxSpeed;
-            this.player.direction = 'up';
-        }
-        if (this.keys['arrowdown'] || this.keys['s']) {
-            targetVy = this.player.maxSpeed;
-            this.player.direction = 'down';
-        }
-        if (this.keys['arrowleft'] || this.keys['a']) {
-            targetVx = -this.player.maxSpeed;
-            this.player.direction = 'left';
-        }
-        if (this.keys['arrowright'] || this.keys['d']) {
-            targetVx = this.player.maxSpeed;
-            this.player.direction = 'right';
-        }
-
-        // Apply acceleration
-        this.player.vx += (targetVx - this.player.vx) * this.player.acceleration;
-        this.player.vy += (targetVy - this.player.vy) * this.player.acceleration;
-
-        // Apply friction when not moving
-        if (targetVx === 0) this.player.vx *= this.player.friction;
-        if (targetVy === 0) this.player.vy *= this.player.friction;
-
-        // Update position with boundaries
-        this.player.x = Math.max(0, Math.min(gameData.mapLayout.width - 1, this.player.x + this.player.vx));
-        this.player.y = Math.max(0, Math.min(gameData.mapLayout.height - 1, this.player.y + this.player.vy));
-
-        // Update walk cycle
-        if (Math.abs(this.player.vx) > 0.01 || Math.abs(this.player.vy) > 0.01) {
-            this.player.walkCycle += deltaTime * 0.01;
-
-            // Create dust particles when walking
-            if (Math.random() < 0.3) {
-                this.createParticle(this.player.x, this.player.y, 'dust');
+                if (this.waveEnemyQueue.length > 0) {
+                    this.nextSpawnTime = Date.now() + this.waveEnemyQueue[0].delay;
+                }
             }
         }
 
-        // Smooth camera following
-        this.camera.x += (this.player.x - this.camera.x) * this.camera.smoothing;
-        this.camera.y += (this.player.y - this.camera.y) * this.camera.smoothing;
+        // Tower Defense: Update enemies
+        this.updateEnemies(deltaTime);
+
+        // Tower Defense: Update towers (shooting)
+        this.updateTowers(deltaTime);
+
+        // Tower Defense: Update projectiles
+        this.updateProjectiles(deltaTime);
+
+        // Tower Defense: Check collisions
+        this.checkCollisions();
 
         // Update particles
         this.updateParticles(deltaTime);
 
-        // Check for nearby NPCs
-        this.checkNearbyNPCs();
-
         // Update clouds
         this.updateClouds(deltaTime);
-
-        // FarmVille: Update energy regeneration
-        this.updateEnergy();
 
         // Update floating texts
         this.updateFloatingTexts(deltaTime);
 
-        // Update combo multiplier decay
-        const now = Date.now();
-        if (now - this.lastHarvestTime > 5000) { // 5 seconds timeout
-            this.harvestStreak = 0;
-            this.comboMultiplier = 1.0;
+        // Check if wave is complete
+        if (this.gameState.waveInProgress &&
+            this.waveEnemyQueue.length === 0 &&
+            this.enemies.length === 0) {
+            this.completeWave();
+        }
+
+        // Check for game over
+        if (this.gameState.lives <= 0 && !this.gameOver) {
+            this.endGame(false);
         }
     }
 
@@ -503,7 +433,7 @@ Created with ☁️ for AWS learners everywhere.`);
     }
 
     render() {
-        // FarmVille-style rendering
+        // Tower Defense rendering
 
         // Clear canvas with animated gradient background
         const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
@@ -514,51 +444,65 @@ Created with ☁️ for AWS learners everywhere.`);
         this.ctx.fillStyle = gradient;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Draw farm plots
-        this.drawFarmPlots();
+        // Draw path
+        this.drawPath();
 
-        // Draw NPCs (teachers)
-        this.drawNPCs();
+        // Draw build spots
+        this.drawBuildSpots();
+
+        // Draw towers
+        this.drawTowers();
+
+        // Draw enemies
+        this.drawEnemies();
+
+        // Draw projectiles
+        this.drawProjectiles();
 
         // Draw particles
-        this.drawFarmParticles();
+        this.drawParticles();
 
-        // Draw floating texts (rewards, combos)
+        // Draw floating texts
         this.drawFloatingTexts();
 
-        // Draw combo multiplier indicator
-        if (this.comboMultiplier > 1.0) {
-            this.ctx.save();
-            this.ctx.font = 'bold 24px Arial';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillStyle = '#FFD700';
-            this.ctx.strokeStyle = '#000';
-            this.ctx.lineWidth = 3;
-            const comboText = `${this.harvestStreak}x COMBO! (${Math.floor(this.comboMultiplier * 100)}% bonus)`;
-            this.ctx.strokeText(comboText, this.canvas.width / 2, 60);
-            this.ctx.fillText(comboText, this.canvas.width / 2, 60);
-            this.ctx.restore();
-        }
-
-        // Draw day counter and help text
+        // Draw wave info
         this.ctx.save();
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
         this.ctx.lineWidth = 2;
-        this.roundRect(10, 15, 120, 40, 8);
+        this.roundRect(10, 15, 180, 40, 8);
         this.ctx.fill();
         this.ctx.stroke();
 
         this.ctx.fillStyle = '#FFD700';
         this.ctx.font = 'bold 20px Arial';
         this.ctx.textAlign = 'left';
-        this.ctx.fillText(`☀️ Day ${this.gameState.day}`, 25, 40);
+        this.ctx.fillText(`Wave ${this.gameState.currentWave}/10`, 25, 40);
         this.ctx.restore();
 
+        // Draw lives indicator
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        this.ctx.lineWidth = 2;
+        this.roundRect(200, 15, 120, 40, 8);
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = this.gameState.lives > 5 ? '#4CAF50' : '#FF4444';
+        this.ctx.font = 'bold 20px Arial';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText(`❤️ ${this.gameState.lives}`, 215, 40);
+        this.ctx.restore();
+
+        // Draw help text
         this.ctx.font = '14px Arial';
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         this.ctx.textAlign = 'left';
-        this.ctx.fillText('🎓 Click NPCs to learn AWS • 🌱 Click plots to farm • ⏭️ Press N for next day', 20, this.canvas.height - 20);
+        const helpText = this.gameState.waveInProgress
+            ? '🎓 Complete quizzes (press E) to unlock towers • Click build spots to place towers'
+            : '🎮 Press SPACE or W to start next wave • Complete quizzes to unlock towers';
+        this.ctx.fillText(helpText, 20, this.canvas.height - 20);
     }
 
     drawFarmPlots() {
@@ -1372,6 +1316,17 @@ Created with ☁️ for AWS learners everywhere.`);
             if (this.currentQuiz) {
                 this.addStatForCategory(this.currentQuiz, 1);
             }
+
+            // Tower Defense: Unlock towers based on quiz category
+            const towersToUnlock = towerDefenseData.towers.filter(tower =>
+                tower.quizCategory === this.currentQuiz &&
+                !this.gameState.towersUnlocked.includes(tower.id)
+            );
+
+            towersToUnlock.forEach(tower => {
+                this.gameState.towersUnlocked.push(tower.id);
+                this.showNotification(`🎉 Tower Unlocked: ${tower.emoji} ${tower.name}!`);
+            });
         } else {
             this.gameState.quizStreak = 0;
         }
@@ -1382,8 +1337,8 @@ Created with ☁️ for AWS learners everywhere.`);
         // Check achievements
         this.checkQuizAchievements(percentage);
 
-        // Show results
-        const resultText = `
+        // Build result text with tower unlocks
+        let resultText = `
 Quiz Complete! 🎓
 
 Score: ${this.quizScore}/${totalQuestions} (${percentage}%)
@@ -1394,6 +1349,14 @@ ${passed ? `Rewards:
 ⭐ +${this.quizScore * 15} XP
 🔥 Streak: ${this.gameState.quizStreak}` : 'Keep studying and try again!'}
 `;
+
+        // Add tower unlock info
+        if (passed && towersToUnlock.length > 0) {
+            resultText += `\n\n🗼 New Towers Unlocked:\n`;
+            towersToUnlock.forEach(tower => {
+                resultText += `${tower.emoji} ${tower.name}\n`;
+            });
+        }
 
         alert(resultText);
         this.closeQuiz();
@@ -1431,83 +1394,6 @@ ${passed ? `Rewards:
     closeQuiz() {
         document.getElementById('quiz-modal').classList.add('hidden');
         this.currentQuiz = null;
-    }
-
-    openShop() {
-        const modal = document.getElementById('shop-modal');
-        const itemsDiv = document.getElementById('shop-items');
-        itemsDiv.innerHTML = '';
-
-        const unlockedServices = getUnlockedServices(this.gameState.level);
-
-        for (const service of unlockedServices) {
-            const div = document.createElement('div');
-            div.className = 'shop-item';
-            div.innerHTML = `
-                <div class="shop-item-icon">${service.emoji}</div>
-                <div class="shop-item-name">${service.name}</div>
-                <div class="shop-item-price">☁️ ${service.cost}</div>
-            `;
-
-            if (this.gameState.credits >= service.cost) {
-                div.onclick = () => this.buyService(service);
-            } else {
-                div.classList.add('locked');
-            }
-
-            itemsDiv.appendChild(div);
-        }
-
-        modal.classList.remove('hidden');
-    }
-
-    buyService(service) {
-        // FarmVille mode: Plant on selected plot
-        if (this.plantingMode && this.selectedPlot) {
-            const success = this.plantService(this.selectedPlot, service);
-            if (success) {
-                this.closeShop();
-                this.plantingMode = false;
-                this.selectedPlot = null;
-            }
-            return;
-        }
-
-        // Legacy mode: Old planting system
-        if (this.gameState.credits < service.cost) {
-            alert('Not enough cloud credits!');
-            return;
-        }
-
-        // Find empty spot near player
-        const plantX = Math.floor(this.player.x);
-        const plantY = Math.floor(this.player.y);
-
-        this.gameState.credits -= service.cost;
-        this.gameState.plantedServices.push({
-            serviceId: service.id,
-            x: plantX,
-            y: plantY,
-            plantedDay: this.gameState.day
-        });
-
-        this.addXP(service.xpReward);
-        this.updateDailyTask('farming', 1);
-
-        this.showNotification(`✅ Planted ${service.name}!`);
-        this.updateUI();
-        this.saveGame();
-
-        // Check if all services planted
-        if (this.gameState.plantedServices.length >= gameData.services.length) {
-            this.unlockAchievement('all-services');
-        }
-    }
-
-    closeShop() {
-        document.getElementById('shop-modal').classList.add('hidden');
-        this.plantingMode = false;
-        this.selectedPlot = null;
     }
 
     addXP(amount) {
@@ -1726,17 +1612,24 @@ ${passed ? `Rewards:
                     loadedState.title = 'Novice';
                 }
 
-                // Migrate old saves for FarmVille system
-                if (!loadedState.farmPlots) {
-                    loadedState.farmPlots = this.initializeFarmGrid();
-                }
-                if (!loadedState.energy && loadedState.energy !== 0) {
-                    loadedState.energy = 100;
-                    loadedState.maxEnergy = 100;
-                    loadedState.lastEnergyUpdate = Date.now();
+                // Migrate old saves for Tower Defense system
+                if (!loadedState.lives && loadedState.lives !== 0) {
+                    loadedState.lives = 20;
+                    loadedState.currentWave = 0;
+                    loadedState.waveInProgress = false;
+                    loadedState.towersUnlocked = ['waf-tower', 'cloudfront-tower'];
+                    loadedState.placedTowers = [];
                 }
 
                 this.gameState = loadedState;
+
+                // Reset tower defense runtime state
+                this.enemies = [];
+                this.projectiles = [];
+                this.waveEnemyQueue = [];
+                this.enemyIdCounter = 0;
+                this.projectileIdCounter = 0;
+
                 return true;
             }
         } catch (e) {
@@ -2056,268 +1949,697 @@ ${passed ? `Rewards:
         }
     }
 
-    // ==================== FarmVille Mechanics ====================
+    // ==================== Tower Defense Mechanics ====================
 
-    handlePlotClick(x, y) {
-        // Check for NPC click first
-        const npc = this.getNPCAtPosition(x, y);
-        if (npc) {
-            this.interactWithNPC(npc);
+    handleBuildSpotClick(x, y) {
+        // Find clicked build spot
+        const spot = this.getBuildSpotAtPosition(x, y);
+        if (!spot) return;
+
+        if (spot.occupied) {
+            this.showNotification('❌ Build spot already occupied!');
             return;
         }
 
-        // Then check for plot click
-        const plot = this.getPlotAtPosition(x, y);
-        if (!plot) return;
-
-        if (!plot.unlocked) {
-            this.showNotification('🔒 Unlock this plot by leveling up!');
-            return;
-        }
-
-        if (plot.state === 'empty') {
-            // Open shop to select service to plant
-            this.openShopForPlanting(plot);
-        } else if (plot.state === 'ready') {
-            // Harvest the plot
-            this.harvestPlot(plot);
-        } else if (plot.state === 'growing' || plot.state === 'planted') {
-            // Show growth info
-            const service = getServiceById(plot.serviceId);
-            const daysLeft = plot.growthRequired - plot.growthProgress;
-            this.showNotification(`🌱 ${service?.name || 'Service'} growing... ${daysLeft} days left`);
+        // Show tower selection or place tower if one is selected
+        if (this.selectedTowerType) {
+            this.placeTower(spot, this.selectedTowerType);
+            this.selectedTowerType = null;
+        } else {
+            this.openTowerShop(spot);
         }
     }
 
-    handlePlotHover(x, y) {
-        // Check for NPC hover first
-        const npc = this.getNPCAtPosition(x, y);
-        this.hoveredNPC = npc;
-
-        if (npc) {
-            this.selectedPlot = null;
-            this.canvas.style.cursor = 'pointer';
-            return;
-        }
-
-        // Then check for plot hover
-        const plot = this.getPlotAtPosition(x, y);
-        this.selectedPlot = plot;
-        this.canvas.style.cursor = plot && plot.unlocked ? 'pointer' : 'default';
+    handleBuildSpotHover(x, y) {
+        const spot = this.getBuildSpotAtPosition(x, y);
+        this.hoveredBuildSpot = spot;
+        this.canvas.style.cursor = spot ? 'pointer' : 'default';
     }
 
-    getNPCAtPosition(x, y) {
-        const unlockedNPCs = getUnlockedNPCs(this.gameState.level);
+    getBuildSpotAtPosition(x, y) {
+        const radius = 20;
+        for (const spot of this.buildSpots) {
+            const dist = Math.sqrt(Math.pow(x - spot.x, 2) + Math.pow(y - spot.y, 2));
+            if (dist <= radius) {
+                return spot;
+            }
+        }
+        return null;
+    }
 
-        for (const npc of unlockedNPCs) {
-            if (npc.screenX && npc.screenY && npc.screenRadius) {
-                const distance = Math.sqrt(
-                    Math.pow(x - npc.screenX, 2) + Math.pow(y - npc.screenY, 2)
-                );
+    openTowerShop(buildSpot = null) {
+        if (buildSpot) {
+            this.selectedBuildSpot = buildSpot;
+        }
 
-                if (distance <= npc.screenRadius) {
-                    return npc;
+        const modal = document.getElementById('shop-modal');
+        const itemsDiv = document.getElementById('shop-items');
+        itemsDiv.innerHTML = '';
+
+        // Show unlocked towers
+        const unlockedTowerIds = this.gameState.towersUnlocked;
+        const unlockedTowers = towerDefenseData.towers.filter(t =>
+            unlockedTowerIds.includes(t.id) && t.unlockLevel <= this.gameState.level
+        );
+
+        for (const tower of unlockedTowers) {
+            const div = document.createElement('div');
+            div.className = 'shop-item';
+            div.innerHTML = `
+                <div class="shop-item-icon">${tower.emoji}</div>
+                <div class="shop-item-name">${tower.name}</div>
+                <div class="shop-item-price">☁️ ${tower.cost}</div>
+                <div style="font-size: 11px; color: #888; margin-top: 4px;">${tower.description}</div>
+            `;
+
+            if (this.gameState.credits >= tower.cost) {
+                div.onclick = () => {
+                    if (this.selectedBuildSpot) {
+                        this.placeTower(this.selectedBuildSpot, tower.id);
+                        this.closeTowerShop();
+                    } else {
+                        this.selectedTowerType = tower.id;
+                        this.showNotification(`✓ ${tower.name} selected. Click a build spot to place.`);
+                        this.closeTowerShop();
+                    }
+                };
+            } else {
+                div.classList.add('locked');
+            }
+
+            itemsDiv.appendChild(div);
+        }
+
+        // Add locked towers with quiz unlock info
+        const lockedTowers = towerDefenseData.towers.filter(t =>
+            !unlockedTowerIds.includes(t.id) || t.unlockLevel > this.gameState.level
+        );
+
+        for (const tower of lockedTowers.slice(0, 3)) {
+            const div = document.createElement('div');
+            div.className = 'shop-item locked';
+            div.innerHTML = `
+                <div class="shop-item-icon" style="filter: grayscale(1);">${tower.emoji}</div>
+                <div class="shop-item-name">${tower.name}</div>
+                <div style="font-size: 11px; color: #FF6B6B; margin-top: 4px;">🎓 Complete ${tower.quizCategory} quiz to unlock</div>
+            `;
+
+            div.onclick = () => {
+                if (confirm(`📚 ${tower.name} requires completing the ${tower.quizCategory.toUpperCase()} quiz.\n\nTake the quiz now?`)) {
+                    this.closeTowerShop();
+                    this.startQuiz(tower.quizCategory);
                 }
-            }
+            };
+
+            itemsDiv.appendChild(div);
         }
 
-        return null;
+        modal.classList.remove('hidden');
     }
 
-    getPlotAtPosition(x, y) {
-        const cfg = this.farmGridConfig;
-
-        for (const plot of this.gameState.farmPlots) {
-            const plotX = cfg.offsetX + plot.col * cfg.plotSize;
-            const plotY = cfg.offsetY + plot.row * cfg.plotSize;
-
-            if (x >= plotX && x < plotX + cfg.plotSize &&
-                y >= plotY && y < plotY + cfg.plotSize) {
-                return plot;
-            }
-        }
-
-        return null;
+    closeTowerShop() {
+        document.getElementById('shop-modal').classList.add('hidden');
+        this.selectedBuildSpot = null;
     }
 
-    openShopForPlanting(plot) {
-        this.plantingMode = true;
-        this.selectedPlot = plot;
-        this.openShop();
-    }
+    placeTower(buildSpot, towerId) {
+        const towerData = getTowerById(towerId);
+        if (!towerData) return;
 
-    plantService(plot, service) {
-        // Check energy
-        if (this.gameState.energy < 10) {
-            this.showNotification('⚡ Not enough energy! Wait for energy to regenerate.');
-            return false;
+        // Check if unlocked
+        if (!this.gameState.towersUnlocked.includes(towerId)) {
+            this.showNotification(`🔒 Complete ${towerData.quizCategory} quiz to unlock ${towerData.name}!`);
+            return;
         }
 
         // Check cost
-        if (this.gameState.credits < service.cost) {
+        if (this.gameState.credits < towerData.cost) {
             this.showNotification('❌ Not enough credits!');
-            return false;
-        }
-
-        // Deduct cost and energy
-        this.gameState.credits -= service.cost;
-        this.gameState.energy -= 10;
-
-        // Plant the service
-        plot.state = 'planted';
-        plot.serviceId = service.id;
-        plot.plantedDay = this.gameState.day;
-        plot.plantedTime = Date.now();
-        plot.growthProgress = 0;
-        plot.growthRequired = service.growthDays || 2; // Default 2 days
-
-        // Create planting particles
-        this.createParticle(plot.col + 0.5, plot.row + 0.5, 'sparkle');
-
-        this.showNotification(`✅ Planted ${service.name}!`);
-        this.updateDailyTask('farming', 1);
-        this.updateUI();
-        this.saveGame();
-
-        return true;
-    }
-
-    harvestPlot(plot) {
-        if (plot.state !== 'ready') return;
-
-        // Check energy
-        if (this.gameState.energy < 5) {
-            this.showNotification('⚡ Not enough energy to harvest!');
             return;
         }
 
-        const service = getServiceById(plot.serviceId);
-        if (!service) return;
+        // Deduct cost
+        this.gameState.credits -= towerData.cost;
 
-        // Deduct energy
-        this.gameState.energy -= 5;
+        // Create tower instance
+        const tower = {
+            id: `tower-${this.gameState.placedTowers.length}`,
+            type: towerId,
+            x: buildSpot.x,
+            y: buildSpot.y,
+            lastShot: 0,
+            target: null,
+            ...towerData
+        };
 
-        // IMPROVED GAMEPLAY: Combo system
-        const now = Date.now();
-        if (now - this.lastHarvestTime < 5000) {
-            // Within 5 seconds - continue combo
-            this.harvestStreak++;
-            this.comboMultiplier = Math.min(3.0, 1.0 + (this.harvestStreak * 0.15));
-        } else {
-            // Reset combo
-            this.harvestStreak = 1;
-            this.comboMultiplier = 1.0;
-        }
-        this.lastHarvestTime = now;
+        this.gameState.placedTowers.push(tower);
+        buildSpot.occupied = true;
 
-        // Calculate rewards with combo multiplier
-        const baseHarvestReward = service.cost * 2;
-        const baseXPReward = service.xpReward * 2;
-
-        const harvestReward = Math.floor(baseHarvestReward * this.comboMultiplier);
-        const xpReward = Math.floor(baseXPReward * this.comboMultiplier);
-
-        this.gameState.credits += harvestReward;
-        this.addXP(xpReward);
-
-        // Calculate plot center for floating text
-        const cfg = this.farmGridConfig;
-        const plotCenterX = cfg.offsetX + (plot.col * cfg.plotSize) + (cfg.plotSize / 2);
-        const plotCenterY = cfg.offsetY + (plot.row * cfg.plotSize) + (cfg.plotSize / 2);
-
-        // Create floating texts for rewards
-        this.createFloatingText(plotCenterX, plotCenterY - 20, `+${harvestReward} ☁️`, '#4CAF50', 22);
-        this.createFloatingText(plotCenterX, plotCenterY, `+${xpReward} ⭐`, '#FFD700', 18);
-
-        if (this.comboMultiplier > 1.0) {
-            this.createFloatingText(plotCenterX, plotCenterY + 20, `${this.harvestStreak}x COMBO!`, '#FF4500', 20);
+        // Create particles
+        for (let i = 0; i < 10; i++) {
+            this.createParticle(buildSpot.x, buildSpot.y, 'sparkle');
         }
 
-        // Enhanced harvest particles
-        for (let i = 0; i < 15; i++) {
-            this.createParticle(plot.col + 0.5 + (Math.random() - 0.5),
-                              plot.row + 0.5 + (Math.random() - 0.5), 'sparkle');
-        }
-
-        // Show harvest notification
-        const comboText = this.comboMultiplier > 1.0 ? ` (${Math.floor(this.comboMultiplier * 100)}% combo!)` : '';
-        this.showNotification(`✨ Harvested ${service.name}! +${harvestReward} credits, +${xpReward} XP${comboText}`);
-
-        // Reset plot to empty
-        plot.state = 'empty';
-        plot.serviceId = null;
-        plot.plantedDay = null;
-        plot.plantedTime = null;
-        plot.growthProgress = 0;
-        plot.growthRequired = 0;
-
-        // Update quest progress
-        this.gameState.activeQuests.forEach(questId => {
-            this.updateQuestProgress(questId, 'harvest', 1);
-        });
-
+        this.showNotification(`✅ ${towerData.name} placed!`);
         this.updateUI();
         this.saveGame();
     }
 
-    updateGrowth() {
-        let anyGrowth = false;
+    startNextWave() {
+        if (this.gameState.waveInProgress) {
+            this.showNotification('⚠️ Wave already in progress!');
+            return;
+        }
 
-        for (const plot of this.gameState.farmPlots) {
-            if (plot.state === 'planted' || plot.state === 'growing') {
-                plot.growthProgress++;
+        if (this.gameState.currentWave >= towerDefenseData.waves.length) {
+            this.endGame(true);
+            return;
+        }
 
-                if (plot.growthProgress >= plot.growthRequired) {
-                    plot.state = 'ready';
-                    const service = getServiceById(plot.serviceId);
-                    this.showNotification(`🎉 ${service?.name || 'Service'} is ready to harvest!`);
-                    anyGrowth = true;
+        this.gameState.currentWave++;
+        this.gameState.waveInProgress = true;
+
+        const waveData = getWave(this.gameState.currentWave);
+        if (!waveData) {
+            this.showNotification('❌ No wave data found!');
+            return;
+        }
+
+        // Build enemy spawn queue
+        this.waveEnemyQueue = [];
+        let currentDelay = 1000; // 1 second before first enemy
+
+        waveData.enemies.forEach(group => {
+            const enemyType = getEnemyById(group.type);
+            if (!enemyType) return;
+
+            for (let i = 0; i < group.count; i++) {
+                this.waveEnemyQueue.push({
+                    type: group.type,
+                    delay: currentDelay
+                });
+                currentDelay += group.spawnInterval;
+            }
+        });
+
+        this.nextSpawnTime = Date.now() + 1000;
+
+        this.showNotification(`🌊 Wave ${this.gameState.currentWave}: ${waveData.name}`);
+        this.updateUI();
+    }
+
+    spawnEnemy(enemyTypeId) {
+        const enemyData = getEnemyById(enemyTypeId);
+        if (!enemyData) return;
+
+        const path = towerDefenseData.path;
+        const startPoint = path[0];
+
+        const enemy = {
+            id: `enemy-${this.enemyIdCounter++}`,
+            type: enemyTypeId,
+            x: startPoint.x,
+            y: startPoint.y,
+            health: enemyData.health,
+            maxHealth: enemyData.health,
+            speed: enemyData.speed,
+            pathIndex: 0,
+            distanceToNext: 0,
+            emoji: enemyData.emoji,
+            reward: enemyData.reward,
+            enemyType: enemyData.type
+        };
+
+        this.enemies.push(enemy);
+    }
+
+    updateEnemies(deltaTime) {
+        const path = towerDefenseData.path;
+
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+            const enemy = this.enemies[i];
+
+            // Move enemy along path
+            if (enemy.pathIndex < path.length - 1) {
+                const current = path[enemy.pathIndex];
+                const next = path[enemy.pathIndex + 1];
+
+                const dx = next.x - enemy.x;
+                const dy = next.y - enemy.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < 5) {
+                    // Reached waypoint
+                    enemy.pathIndex++;
                 } else {
-                    plot.state = 'growing';
+                    // Move towards next waypoint
+                    const moveDistance = enemy.speed * (deltaTime / 16);
+                    enemy.x += (dx / distance) * moveDistance;
+                    enemy.y += (dy / distance) * moveDistance;
+                }
+            } else {
+                // Reached end - damage player
+                this.gameState.lives--;
+                this.enemies.splice(i, 1);
+                this.showNotification(`💔 -1 Life! (${this.gameState.lives} remaining)`);
+                this.createFloatingText(enemy.x, enemy.y, '-1 LIFE', '#FF4444', 24);
+
+                // Create explosion particles
+                for (let j = 0; j < 20; j++) {
+                    this.createParticle(enemy.x, enemy.y, 'sparkle');
                 }
             }
         }
-
-        if (anyGrowth) {
-            this.saveGame();
-        }
     }
 
-    updateEnergy() {
+    updateTowers(deltaTime) {
         const now = Date.now();
-        const timeSince = now - this.gameState.lastEnergyUpdate;
-        const minutesElapsed = timeSince / (1000 * 60);
 
-        // Regenerate 1 energy per minute
-        const energyToAdd = Math.floor(minutesElapsed);
+        for (const tower of this.gameState.placedTowers) {
+            // Check if tower can shoot
+            if (now - tower.lastShot < tower.fireRate) continue;
 
-        if (energyToAdd > 0) {
-            this.gameState.energy = Math.min(
-                this.gameState.maxEnergy,
-                this.gameState.energy + energyToAdd
-            );
-            this.gameState.lastEnergyUpdate = now;
-            this.updateUI();
+            // Find target
+            let target = null;
+            let closestDistance = tower.range;
+
+            for (const enemy of this.enemies) {
+                // Type matching for efficiency
+                if (tower.targetType !== 'all' && tower.targetType !== enemy.enemyType) {
+                    continue;
+                }
+
+                const distance = Math.sqrt(
+                    Math.pow(tower.x - enemy.x, 2) +
+                    Math.pow(tower.y - enemy.y, 2)
+                );
+
+                if (distance < closestDistance) {
+                    target = enemy;
+                    closestDistance = distance;
+                }
+            }
+
+            // Shoot at target
+            if (target) {
+                this.shootProjectile(tower, target);
+                tower.lastShot = now;
+            }
         }
     }
 
-    advanceDay() {
-        this.gameState.day++;
-        this.updateGrowth();
+    shootProjectile(tower, target) {
+        const projectile = {
+            id: `proj-${this.projectileIdCounter++}`,
+            x: tower.x,
+            y: tower.y,
+            targetId: target.id,
+            damage: tower.damage,
+            speed: 8,
+            effect: tower.effect,
+            towerType: tower.type
+        };
 
-        // Restore some energy
-        this.gameState.energy = Math.min(
-            this.gameState.maxEnergy,
-            this.gameState.energy + 50
-        );
+        this.projectiles.push(projectile);
+    }
 
-        // Reset daily tasks
-        this.gameState.dailyTaskProgress = { quiz: 0, social: 0, farming: 0 };
+    updateProjectiles(deltaTime) {
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            const proj = this.projectiles[i];
 
-        this.showNotification(`🌅 Day ${this.gameState.day} begins! Energy restored.`);
+            // Find target
+            const target = this.enemies.find(e => e.id === proj.targetId);
+
+            if (!target) {
+                // Target died or disappeared
+                this.projectiles.splice(i, 1);
+                continue;
+            }
+
+            // Move towards target
+            const dx = target.x - proj.x;
+            const dy = target.y - proj.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < 10) {
+                // Hit target
+                this.hitEnemy(target, proj);
+                this.projectiles.splice(i, 1);
+            } else {
+                // Move projectile
+                const moveDistance = proj.speed * (deltaTime / 16);
+                proj.x += (dx / distance) * moveDistance;
+                proj.y += (dy / distance) * moveDistance;
+            }
+        }
+    }
+
+    hitEnemy(enemy, projectile) {
+        enemy.health -= projectile.damage;
+
+        // Create hit particles
+        for (let i = 0; i < 5; i++) {
+            this.createParticle(enemy.x, enemy.y, 'sparkle');
+        }
+
+        // Show damage text
+        this.createFloatingText(enemy.x, enemy.y - 20, `-${projectile.damage}`, '#FF6B6B', 16);
+
+        // Apply effects
+        if (projectile.effect === 'slow') {
+            enemy.speed *= 0.7;
+        }
+
+        // Check if enemy died
+        if (enemy.health <= 0) {
+            this.killEnemy(enemy);
+        }
+    }
+
+    killEnemy(enemy) {
+        // Award credits
+        this.gameState.credits += enemy.reward;
+        this.addXP(enemy.reward);
+
+        // Show reward
+        this.createFloatingText(enemy.x, enemy.y, `+${enemy.reward} ☁️`, '#4CAF50', 18);
+
+        // Create death particles
+        for (let i = 0; i < 15; i++) {
+            this.createParticle(enemy.x, enemy.y, 'sparkle');
+        }
+
+        // Remove enemy
+        const index = this.enemies.findIndex(e => e.id === enemy.id);
+        if (index !== -1) {
+            this.enemies.splice(index, 1);
+        }
+
+        // Update quest progress
+        this.gameState.activeQuests.forEach(questId => {
+            this.updateQuestProgress(questId, 'defense', 1);
+        });
+
+        this.updateUI();
+    }
+
+    checkCollisions() {
+        // Collision detection is handled in updateProjectiles
+    }
+
+    completeWave() {
+        this.gameState.waveInProgress = false;
+
+        // Award wave completion bonus
+        const bonus = 50 + (this.gameState.currentWave * 10);
+        this.gameState.credits += bonus;
+        this.addXP(bonus);
+
+        this.showNotification(`✅ Wave ${this.gameState.currentWave} Complete! +${bonus} bonus credits!`);
         this.updateUI();
         this.saveGame();
     }
+
+    endGame(victory) {
+        this.gameOver = true;
+
+        if (victory) {
+            alert(`🎉 VICTORY! 🎉
+
+You've defended against all waves!
+
+Final Stats:
+- Level: ${this.gameState.level}
+- Credits: ${this.gameState.credits}
+- Lives Remaining: ${this.gameState.lives}
+
+You've mastered AWS cloud security!`);
+            this.unlockAchievement('cloud-architect');
+        } else {
+            alert(`💔 GAME OVER 💔
+
+Your cloud infrastructure was breached!
+
+Final Stats:
+- Wave Reached: ${this.gameState.currentWave}
+- Level: ${this.gameState.level}
+- Credits: ${this.gameState.credits}
+
+Study AWS security and try again!`);
+        }
+
+        this.saveGame();
+    }
+
+    // ==================== Tower Defense Drawing Methods ====================
+
+    drawPath() {
+        const path = towerDefenseData.path;
+
+        this.ctx.save();
+        this.ctx.strokeStyle = '#8B7355';
+        this.ctx.lineWidth = 40;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+
+        // Draw path shadow
+        this.ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        this.ctx.shadowBlur = 10;
+        this.ctx.shadowOffsetY = 5;
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) {
+            this.ctx.lineTo(path[i].x, path[i].y);
+        }
+        this.ctx.stroke();
+
+        // Draw path border
+        this.ctx.shadowBlur = 0;
+        this.ctx.strokeStyle = '#6B5345';
+        this.ctx.lineWidth = 44;
+        this.ctx.beginPath();
+        this.ctx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) {
+            this.ctx.lineTo(path[i].x, path[i].y);
+        }
+        this.ctx.stroke();
+
+        // Draw path fill
+        this.ctx.strokeStyle = '#A0826D';
+        this.ctx.lineWidth = 36;
+        this.ctx.beginPath();
+        this.ctx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) {
+            this.ctx.lineTo(path[i].x, path[i].y);
+        }
+        this.ctx.stroke();
+
+        this.ctx.restore();
+
+        // Draw start and end markers
+        this.ctx.save();
+        this.ctx.font = '32px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+
+        // Start
+        this.ctx.fillStyle = '#4CAF50';
+        this.ctx.fillText('🚪', path[0].x, path[0].y);
+
+        // End
+        this.ctx.fillStyle = '#FF4444';
+        this.ctx.fillText('🏁', path[path.length - 1].x, path[path.length - 1].y);
+
+        this.ctx.restore();
+    }
+
+    drawBuildSpots() {
+        for (const spot of this.buildSpots) {
+            if (spot.occupied) continue;
+
+            const isHovered = this.hoveredBuildSpot === spot;
+
+            this.ctx.save();
+
+            // Draw build spot circle
+            this.ctx.beginPath();
+            this.ctx.arc(spot.x, spot.y, 18, 0, Math.PI * 2);
+
+            if (isHovered) {
+                this.ctx.fillStyle = 'rgba(102, 126, 234, 0.4)';
+                this.ctx.strokeStyle = '#FFD700';
+                this.ctx.lineWidth = 3;
+            } else {
+                this.ctx.fillStyle = 'rgba(102, 126, 234, 0.2)';
+                this.ctx.strokeStyle = '#667eea';
+                this.ctx.lineWidth = 2;
+            }
+
+            this.ctx.fill();
+            this.ctx.stroke();
+
+            // Draw plus sign
+            if (isHovered) {
+                this.ctx.fillStyle = '#FFD700';
+                this.ctx.font = 'bold 24px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText('+', spot.x, spot.y);
+            }
+
+            this.ctx.restore();
+        }
+    }
+
+    drawTowers() {
+        for (const tower of this.gameState.placedTowers) {
+            this.ctx.save();
+
+            // Draw tower range (if hovered)
+            if (this.hoveredBuildSpot && Math.abs(this.hoveredBuildSpot.x - tower.x) < 5 && Math.abs(this.hoveredBuildSpot.y - tower.y) < 5) {
+                this.ctx.beginPath();
+                this.ctx.arc(tower.x, tower.y, tower.range, 0, Math.PI * 2);
+                this.ctx.fillStyle = 'rgba(102, 126, 234, 0.1)';
+                this.ctx.fill();
+                this.ctx.strokeStyle = 'rgba(102, 126, 234, 0.3)';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+            }
+
+            // Draw tower base
+            const gradient = this.ctx.createRadialGradient(tower.x, tower.y, 0, tower.x, tower.y, 25);
+            gradient.addColorStop(0, 'rgba(102, 126, 234, 0.8)');
+            gradient.addColorStop(1, 'rgba(102, 126, 234, 0.3)');
+
+            this.ctx.fillStyle = gradient;
+            this.ctx.beginPath();
+            this.ctx.arc(tower.x, tower.y, 25, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.strokeStyle = '#667eea';
+            this.ctx.lineWidth = 3;
+            this.ctx.stroke();
+
+            // Draw tower emoji
+            this.ctx.font = '32px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(tower.emoji, tower.x, tower.y);
+
+            // Draw tower name
+            this.ctx.font = 'bold 10px Arial';
+            this.ctx.fillStyle = '#000';
+            this.ctx.fillText(tower.name, tower.x, tower.y + 35);
+
+            this.ctx.restore();
+        }
+    }
+
+    drawEnemies() {
+        for (const enemy of this.enemies) {
+            this.ctx.save();
+
+            // Draw health bar
+            const barWidth = 30;
+            const barHeight = 4;
+            const barX = enemy.x - barWidth / 2;
+            const barY = enemy.y - 30;
+
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            this.ctx.fillRect(barX, barY, barWidth, barHeight);
+
+            const healthPercent = enemy.health / enemy.maxHealth;
+            this.ctx.fillStyle = healthPercent > 0.5 ? '#4CAF50' : (healthPercent > 0.25 ? '#FFA500' : '#FF4444');
+            this.ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+
+            // Draw enemy emoji
+            this.ctx.font = '28px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+
+            // Shadow
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            this.ctx.beginPath();
+            this.ctx.ellipse(enemy.x, enemy.y + 15, 12, 4, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Emoji with bounce animation
+            const bounce = Math.sin(this.time * 5 + enemy.id.charCodeAt(0)) * 2;
+            this.ctx.fillText(enemy.emoji, enemy.x, enemy.y + bounce);
+
+            this.ctx.restore();
+        }
+    }
+
+    drawProjectiles() {
+        for (const proj of this.projectiles) {
+            this.ctx.save();
+
+            // Draw projectile based on tower type
+            this.ctx.beginPath();
+            this.ctx.arc(proj.x, proj.y, 5, 0, Math.PI * 2);
+
+            switch (proj.towerType) {
+                case 'waf-tower':
+                    this.ctx.fillStyle = '#4CAF50';
+                    break;
+                case 'cloudfront-tower':
+                    this.ctx.fillStyle = '#2196F3';
+                    break;
+                case 'shield-tower':
+                    this.ctx.fillStyle = '#FFD700';
+                    break;
+                default:
+                    this.ctx.fillStyle = '#FF6B6B';
+            }
+
+            this.ctx.shadowColor = this.ctx.fillStyle;
+            this.ctx.shadowBlur = 10;
+            this.ctx.fill();
+
+            this.ctx.restore();
+        }
+    }
+
+    drawParticles() {
+        for (const p of this.particles) {
+            const alpha = p.life / p.maxLife;
+
+            this.ctx.save();
+            this.ctx.globalAlpha = alpha;
+
+            if (p.type === 'dust') {
+                this.ctx.fillStyle = '#8B7355';
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                this.ctx.fill();
+            } else if (p.type === 'sparkle') {
+                this.ctx.fillStyle = '#FFD700';
+                this.ctx.shadowColor = '#FFD700';
+                this.ctx.shadowBlur = 10;
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            this.ctx.restore();
+        }
+    }
+
+}
+
+// Helper functions for tower defense data
+function getTowerById(id) {
+    return towerDefenseData.towers.find(t => t.id === id);
+}
+
+function getEnemyById(id) {
+    return towerDefenseData.enemies.find(e => e.id === id);
+}
+
+function getWave(waveNumber) {
+    return towerDefenseData.waves.find(w => w.wave === waveNumber);
 }
 
 // Initialize game when page loads
