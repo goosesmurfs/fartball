@@ -109,6 +109,7 @@ class CloudFarmGame {
         this.selectedPlot = null;
         this.plantingMode = false;
         this.selectedService = null;
+        this.hoveredNPC = null;
 
         // FarmVille: Farm grid configuration
         this.farmGridConfig = {
@@ -500,6 +501,9 @@ Created with ☁️ for AWS learners everywhere.`);
         // Draw farm plots
         this.drawFarmPlots();
 
+        // Draw NPCs (teachers)
+        this.drawNPCs();
+
         // Draw particles
         this.drawFarmParticles();
 
@@ -511,7 +515,7 @@ Created with ☁️ for AWS learners everywhere.`);
 
         this.ctx.font = '14px Arial';
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        this.ctx.fillText('Click empty plots to plant • Click ready crops to harvest • Press N to advance day', 20, this.canvas.height - 20);
+        this.ctx.fillText('Click NPCs to learn AWS & take quizzes • Click plots to plant/harvest • Press N to advance day', 20, this.canvas.height - 20);
     }
 
     drawFarmPlots() {
@@ -648,6 +652,83 @@ Created with ☁️ for AWS learners everywhere.`);
 
             this.ctx.restore();
         }
+    }
+
+    drawNPCs() {
+        const unlockedNPCs = getUnlockedNPCs(this.gameState.level);
+
+        // Position NPCs around the farm in a nice layout
+        const npcPositions = [
+            { x: 800, y: 200 },   // Right side top
+            { x: 800, y: 350 },   // Right side middle
+            { x: 800, y: 500 },   // Right side bottom
+            { x: 50, y: 200 },    // Left side top
+            { x: 50, y: 350 },    // Left side middle
+            { x: 50, y: 500 },    // Left side bottom
+            { x: 400, y: 80 },    // Top center
+            { x: 400, y: 650 }    // Bottom center
+        ];
+
+        unlockedNPCs.forEach((npc, index) => {
+            if (index >= npcPositions.length) return;
+
+            const pos = npcPositions[index];
+            const isHovered = this.hoveredNPC === npc;
+
+            this.ctx.save();
+
+            // Background circle
+            this.ctx.beginPath();
+            this.ctx.arc(pos.x, pos.y, 40, 0, Math.PI * 2);
+
+            if (isHovered) {
+                this.ctx.fillStyle = 'rgba(102, 126, 234, 0.3)';
+                this.ctx.strokeStyle = '#667eea';
+                this.ctx.lineWidth = 4;
+                this.ctx.shadowColor = '#667eea';
+                this.ctx.shadowBlur = 20;
+            } else {
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                this.ctx.strokeStyle = '#667eea';
+                this.ctx.lineWidth = 3;
+            }
+
+            this.ctx.fill();
+            this.ctx.stroke();
+
+            // NPC emoji
+            this.ctx.shadowBlur = 0;
+            this.ctx.font = '40px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(npc.emoji, pos.x, pos.y);
+
+            // NPC name
+            this.ctx.fillStyle = '#000';
+            this.ctx.font = 'bold 14px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+            this.ctx.shadowBlur = 3;
+            this.ctx.fillText(npc.name, pos.x, pos.y + 55);
+
+            // Pulse effect when hovered
+            if (isHovered) {
+                const pulse = Math.sin(this.time * 5) * 0.3 + 0.7;
+                this.ctx.globalAlpha = pulse;
+                this.ctx.beginPath();
+                this.ctx.arc(pos.x, pos.y, 50, 0, Math.PI * 2);
+                this.ctx.strokeStyle = '#FFD700';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+            }
+
+            this.ctx.restore();
+
+            // Store position for click detection
+            npc.screenX = pos.x;
+            npc.screenY = pos.y;
+            npc.screenRadius = 40;
+        });
     }
 
     drawFarmParticles() {
@@ -1824,6 +1905,14 @@ ${passed ? `Rewards:
     // ==================== FarmVille Mechanics ====================
 
     handlePlotClick(x, y) {
+        // Check for NPC click first
+        const npc = this.getNPCAtPosition(x, y);
+        if (npc) {
+            this.interactWithNPC(npc);
+            return;
+        }
+
+        // Then check for plot click
         const plot = this.getPlotAtPosition(x, y);
         if (!plot) return;
 
@@ -1847,9 +1936,38 @@ ${passed ? `Rewards:
     }
 
     handlePlotHover(x, y) {
+        // Check for NPC hover first
+        const npc = this.getNPCAtPosition(x, y);
+        this.hoveredNPC = npc;
+
+        if (npc) {
+            this.selectedPlot = null;
+            this.canvas.style.cursor = 'pointer';
+            return;
+        }
+
+        // Then check for plot hover
         const plot = this.getPlotAtPosition(x, y);
         this.selectedPlot = plot;
         this.canvas.style.cursor = plot && plot.unlocked ? 'pointer' : 'default';
+    }
+
+    getNPCAtPosition(x, y) {
+        const unlockedNPCs = getUnlockedNPCs(this.gameState.level);
+
+        for (const npc of unlockedNPCs) {
+            if (npc.screenX && npc.screenY && npc.screenRadius) {
+                const distance = Math.sqrt(
+                    Math.pow(x - npc.screenX, 2) + Math.pow(y - npc.screenY, 2)
+                );
+
+                if (distance <= npc.screenRadius) {
+                    return npc;
+                }
+            }
+        }
+
+        return null;
     }
 
     getPlotAtPosition(x, y) {
